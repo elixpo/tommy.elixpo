@@ -207,11 +207,35 @@ class SandboxManager:
         pass
 
     async def _clone_repo(self, sandbox: Sandbox, repo_url: str, branch: str):
-        """Clone repository into sandbox."""
-        # Use GitHub token if available for private repos
+        """
+        Setup repository in sandbox.
+
+        First tries to copy from local cache (fast), falls back to git clone.
+        Local cache is at /root/Polly/data/repo/{owner}_{repo}/
+        """
+        # Try to use local repo cache first (much faster than cloning 600MB+)
+        if "github.com" in repo_url:
+            # Extract owner/repo from URL
+            # https://github.com/owner/repo.git -> owner_repo
+            parts = repo_url.rstrip("/").rstrip(".git").split("/")
+            if len(parts) >= 2:
+                owner, repo_name = parts[-2], parts[-1]
+                local_cache = f"/root/Polly/data/repo/{owner}_{repo_name}"
+
+                # Check if local cache exists and copy it
+                check_cmd = f"test -d {local_cache} && cp -r {local_cache}/. /workspace/"
+                result = await self.execute(sandbox.id, check_cmd, timeout=60)
+
+                if result.exit_code == 0:
+                    # Setup git and checkout branch
+                    setup_cmd = f"cd /workspace && git checkout {branch} 2>/dev/null || git checkout -b {branch}"
+                    await self.execute(sandbox.id, setup_cmd, timeout=30)
+                    logger.info(f"Copied {owner}/{repo_name} from local cache to sandbox {sandbox.id}")
+                    return
+
+        # Fallback to git clone if local cache not available
         token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
         if token and "github.com" in repo_url:
-            # Inject token into URL
             if repo_url.startswith("https://"):
                 repo_url = repo_url.replace("https://", f"https://x-access-token:{token}@")
 
