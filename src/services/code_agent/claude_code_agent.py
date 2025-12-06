@@ -380,10 +380,18 @@ chmod 666 /tmp/claude-code-reference-count.txt
 
         progress.steps_completed.append("Run task")
 
+        # Log the raw result for debugging
+        logger.info(f"ccr exit_code={result.exit_code}, stdout_len={len(result.stdout)}, stderr_len={len(result.stderr)}")
+        if result.stderr:
+            logger.warning(f"ccr stderr: {result.stderr[:500]}")
+        if result.exit_code != 0:
+            logger.warning(f"ccr failed with code {result.exit_code}, stdout tail: {result.stdout[-500:] if result.stdout else 'empty'}")
+
         # Parse result
         if result.exit_code != 0 and not result.stdout:
             progress.status = AgentStatus.FAILED
             progress.error = result.stderr or "Claude Code exited with error"
+            logger.error(f"Task failed: {progress.error}")
             return ClaudeCodeResult(
                 success=False,
                 output=result.stdout,

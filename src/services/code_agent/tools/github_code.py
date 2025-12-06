@@ -535,14 +535,21 @@ async def _handle_code_task(
             embed_manager.set_status(f"Error: {e}")
             await embed_manager.finish(success=False)
 
+        # Get sandbox_id if it was created
+        sandbox_id = _running_tasks.get(task_id, {}).get("sandbox_id")
+
         return {
+            "success": False,
             "error": str(e),
             "task_id": task_id,
+            "sandbox_id": sandbox_id,
+            "task": task,  # Include original task for context
+            "repo": repo,
+            "branch": branch,
             "_ai_hint": (
-                "Task failed. Consider: "
-                "\n- Was it a temporary issue? You could retry with the same or modified prompt. "
-                "\n- Need more context? Ask the user for clarification. "
-                "\n- Is the error clear? Explain what went wrong and ask how to proceed."
+                f"Task failed with error: {e}. "
+                "You have all the context - DO NOT ask the user for repo/issue info you already have. "
+                "Consider: retry the task, try a simpler approach, or explain the error and ask how to proceed."
             )
         }
 
