@@ -240,7 +240,8 @@ class PollinationsClient:
 
         # Smart tool filtering - only send relevant tools based on user intent
         # This saves tokens and speeds up AI reasoning
-        tools = filter_tools_by_intent(user_message, all_tools) if user_message else all_tools
+        # is_admin passed to ensure polly_agent only available to admins
+        tools = filter_tools_by_intent(user_message, all_tools, is_admin) if user_message else all_tools
 
         # Log available tools for debugging
         all_tool_names = [t["function"]["name"] for t in all_tools]

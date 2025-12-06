@@ -497,26 +497,28 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Code agent for git operations and autonomous coding. USE THIS TOOL - don't say "I cannot".
+            "description": """Code agent for git operations and autonomous coding. USE THIS - never say "I cannot".
+
+**action=task AUTO-CREATES sandbox** - just call it with task description, sandbox spins up automatically.
 
 Autonomous Tasks:
-- task: Full coding task (plan → code → test → fix). Use test_only=true to skip commit.
+- task: Full coding task (auto-sandbox → plan → code → test → fix → PR). Returns sandbox_id for follow-up.
 - plan: Create plan without executing
 - status: Check task status (task_id)
 
-Sandbox Operations (use sandbox_id from task):
+Sandbox Operations (sandbox_id returned from task):
 - run_in_sandbox: Run command (sandbox_id, command)
 - read_sandbox_file/write_sandbox_file: File ops (sandbox_id, file_path)
 - destroy_sandbox: Cleanup (sandbox_id) [confirm]
 
 Git Operations [admin]:
-- list_branches/create_branch/delete_branch: Branch management (new_branch) [confirm for delete]
-- read_file/list_files: Read repo (file_path, pattern)
-- edit_file: Edit file (file_path, file_content, old_content for replace)
+- list_branches/create_branch/delete_branch: Branch management [confirm for delete]
+- read_file/list_files: Read repo files
+- edit_file: Edit file (file_path, file_content)
 - commit/push: Save changes (commit_message)
 - open_pr: Create PR (pr_title, pr_body, base_branch)
 
-Read ops are always safe. Write ops require admin (tool returns error if not admin).""",
+Read ops always safe. Write ops require admin.""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -728,7 +730,7 @@ TOOL_KEYWORDS = {
     # AI decides when to use them based on context - they're always available
 }
 
-def filter_tools_by_intent(user_message: str, all_tools: list[dict]) -> list[dict]:
+def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: bool = False) -> list[dict]:
     """
     Filter tools based on user intent keywords.
     Fast regex matching - no API calls.
@@ -736,6 +738,7 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict]) -> list[dic
     Args:
         user_message: The user's message
         all_tools: Full list of tool definitions
+        is_admin: Whether user is admin (polly_agent only for admins)
 
     Returns:
         Filtered list of relevant tools, or all tools if no match
@@ -760,7 +763,10 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict]) -> list[dic
             matched_tools.add("github_pr")
 
     # Always include these tools - AI decides when to use them
+    # polly_agent ONLY for admins (security: it can modify code)
     AI_CONTROLLED_TOOLS = {"web_search", "code_search"}
+    if is_admin:
+        AI_CONTROLLED_TOOLS.add("polly_agent")
 
     # Filter tools list
     filtered = [
@@ -796,8 +802,13 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI.
 ## Core Behaviors:
 
 **1. PARALLEL CALLS (mandatory):**
-Call ALL needed tools in ONE response. Never sequential.
-User: "fix issue 5735" → Call github_issue + polly_agent together, not one-by-one.
+Call ALL needed tools in ONE response. Never sequential single calls.
+Examples:
+- "fix issue 5735" → github_issue(get #5735) + polly_agent(task) in ONE call
+- "compare issues 100 and 200" → github_issue(get #100) + github_issue(get #200) together
+- "search for auth bugs and check PR 50" → github_issue(search) + github_pr(get #50) together
+- "what's in the repo?" → github_overview + code_search in ONE call
+- "find similar issues to 123" → github_issue(get #123) + github_issue(find_similar) together
 
 **2. PROACTIVE (fetch, don't ask):**
 User mentions #123? → Call tool to GET it, don't ask for details.
