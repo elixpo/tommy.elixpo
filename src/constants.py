@@ -153,48 +153,27 @@ GITHUB_TOOLS = [
         "type": "function",
         "function": {
             "name": "github_issue",
-            "description": """ALL-IN-ONE issue tool. Use for ANY issue operation:
+            "description": """Issue operations.
 
-READ actions:
-- action="get" → Get issue details (use issue_number, include_comments)
-- action="search" → Search issues (use keywords, state, labels)
-- action="search_user" → Find user's issues (use discord_username, state)
-- action="find_similar" → Find duplicates (use keywords, limit)
-- action="list_labels" → List available labels
-- action="list_milestones" → List milestones
-
-WRITE actions:
-- action="create" → Create issue (use title, description)
-- action="comment" → Add comment (use issue_number, comment)
-- action="edit_comment" → Edit bot's own comment (use comment_id, body)
-- action="delete_comment" → Delete bot's own comment (use comment_id)
-
-ADMIN actions (require admin role):
-- action="close" → Close issue (use issue_number, reason, comment)
-- action="reopen" → Reopen issue (use issue_number, comment)
-- action="edit" → Edit issue (use issue_number, title, body)
-- action="label" → Add labels (use issue_number, labels)
-- action="unlabel" → Remove labels (use issue_number, labels)
-- action="assign" → Assign users (use issue_number, assignees)
-- action="unassign" → Unassign users (use issue_number, assignees)
-- action="milestone" → Set milestone (use issue_number, milestone)
-- action="lock" → Lock/unlock (use issue_number, lock, reason)
-- action="link" → Link issues (use issue_number, related_issues, relationship)
-
-SUBSCRIPTION actions:
-- action="subscribe" → Subscribe to updates (use issue_number)
-- action="unsubscribe" → Unsubscribe (use issue_number)
-- action="unsubscribe_all" → Unsubscribe from all
-- action="list_subscriptions" → Show subscriptions
-
-SUB-ISSUE actions:
-- action="get_sub_issues" → Get sub-issues/children (use issue_number)
-- action="get_parent" → Get parent issue (use issue_number)
-- action="create_sub_issue" → Create NEW issue as sub-issue (use issue_number=parent, title, description) [admin]
-- action="add_sub_issue" → Link existing issue as child (use issue_number=parent, child_issue_number) [admin]
-- action="remove_sub_issue" → Unlink child from parent (use issue_number=parent, child_issue_number) [admin]
-
-NOTE: Sub-issues are regular issues! Use any action (comment, close, assign, label, etc.) on them by their issue_number.""",
+Actions:
+- get: Get issue (issue_number, include_comments)
+- search: Search (keywords, state, labels)
+- search_user: User's issues (discord_username, state)
+- find_similar: Find duplicates (keywords, limit)
+- list_labels / list_milestones: List available
+- create: New issue (title, description)
+- comment: Add comment (issue_number, comment)
+- edit_comment / delete_comment: Modify bot's comments (comment_id)
+- close/reopen: (issue_number, reason, comment) [admin]
+- edit: Edit title/body (issue_number, title, body) [admin]
+- label/unlabel: Manage labels (issue_number, labels) [admin]
+- assign/unassign: Manage assignees (issue_number, assignees) [admin]
+- milestone: Set milestone (issue_number, milestone) [admin]
+- lock: Lock/unlock (issue_number, lock, reason) [admin]
+- link: Link issues (issue_number, related_issues, relationship) [admin]
+- subscribe/unsubscribe/unsubscribe_all/list_subscriptions: Notifications
+- get_sub_issues/get_parent: Sub-issue hierarchy
+- create_sub_issue/add_sub_issue/remove_sub_issue: Manage sub-issues [admin]""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -293,25 +272,17 @@ NOTE: Sub-issues are regular issues! Use any action (comment, close, assign, lab
         "type": "function",
         "function": {
             "name": "github_project",
-            "description": """ALL-IN-ONE GitHub Projects V2 tool. Use for ANY project operation:
+            "description": """GitHub Projects V2 operations.
 
-READ actions:
-- action="list" → List ALL projects in organization (no project_number needed!)
-- action="view" → View project board (use project_number)
-- action="list_items" → List items in project (use project_number, status)
-- action="get_item" → Get item details (use project_number, issue_number)
-
-WRITE actions (admin only):
-- action="add" → Add issue to project (use project_number, issue_number)
-- action="remove" → Remove from project (use project_number, issue_number)
-- action="set_status" → Update status/column (use project_number, issue_number, status)
-- action="set_field" → Set custom field (use project_number, issue_number, field_name, field_value)
-
-Examples:
-- "Show all projects" → action="list"
-- "What's in project 20?" → action="view", project_number=20
-- "Add #123 to project 20" → action="add", project_number=20, issue_number=123
-- "Move #123 to In Progress" → action="set_status", project_number=20, issue_number=123, status="In Progress" """,
+Actions:
+- list: List all org projects
+- view: View project board (project_number)
+- list_items: List items (project_number, status)
+- get_item: Get item details (project_number, issue_number)
+- add: Add issue to project (project_number, issue_number) [admin]
+- remove: Remove from project (project_number, issue_number) [admin]
+- set_status: Update column (project_number, issue_number, status) [admin]
+- set_field: Set custom field (project_number, issue_number, field_name, field_value) [admin]""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -348,14 +319,7 @@ Examples:
         "type": "function",
         "function": {
             "name": "github_overview",
-            "description": """FAST: Get complete repo context in ONE call. Returns issues, labels, milestones, and projects together.
-
-Use this FIRST when you need multiple pieces of info:
-- "Show me the repo" → Get overview
-- "What issues are there?" → Get overview (faster than searching)
-- "What labels/milestones exist?" → Get overview
-
-Returns: issue counts, recent issues, all labels (with counts), milestones, and top projects.""",
+            "description": """Get repo summary in ONE call: issue counts, recent issues, labels, milestones, projects. Use first for context.""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -376,16 +340,7 @@ Returns: issue counts, recent issues, all labels (with counts), milestones, and 
         "type": "function",
         "function": {
             "name": "github_custom",
-            "description": """FLEXIBLE: Fetch raw GitHub data for YOUR analysis. Use for anything not covered by other tools!
-
-Examples:
-- "find spam issues" → request: "all open issues with full body text", include_body=true
-- "stale issues?" → request: "issues with no activity in 30+ days"
-- "who's most active?" → request: "recent commits and PRs"
-- "PR stats" → request: "pull request counts"
-- "repo health" → request: "repository statistics"
-
-The tool fetches raw data. YOU analyze it and answer the user's question!""",
+            "description": """Fetch raw GitHub data for custom analysis. Describe what you need in plain English (request). Use include_body=true for full text.""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -410,58 +365,29 @@ The tool fetches raw data. YOU analyze it and answer the user's question!""",
         "type": "function",
         "function": {
             "name": "github_pr",
-            "description": """ALL-IN-ONE Pull Request tool. Use for ANY PR operation:
+            "description": """Pull Request operations.
 
-READ actions:
-- action="get" → Get full PR details (use pr_number)
-- action="list" → List PRs (use state: open/closed/merged, limit, base)
-- action="get_files" → Get files changed (use pr_number)
-- action="get_diff" → Get unified diff (use pr_number)
-- action="get_checks" → Get CI/workflow status (use pr_number)
-- action="get_commits" → Get all commits in PR (use pr_number)
-- action="get_threads" → Get review threads (use pr_number)
-- action="get_review_comments" → Get inline review comments (use pr_number)
-- action="get_file_at_ref" → Get FULL file content at a branch/commit (use file_path, ref)
-  - Use this to see actual file contents, not just diffs!
-  - file_path: e.g., ".github/workflows/ci.yml"
-  - ref: branch name (e.g., "feat-branch") or commit SHA
-
-WRITE actions (admin only):
-- action="request_review" → Request reviewers (use pr_number, reviewers, team_reviewers)
-- action="remove_reviewer" → Remove requested reviewers (use pr_number, reviewers, team_reviewers)
-- action="approve" → Approve PR (use pr_number, optional body)
-- action="request_changes" → Request changes (use pr_number, body required)
-- action="merge" → Merge PR (use pr_number, merge_method: merge/squash/rebase)
-- action="update" → Update PR title/body (use pr_number, title, body)
-- action="close" → Close PR (use pr_number)
-- action="reopen" → Reopen PR (use pr_number)
-- action="create" → Create new PR (use title, head, base, body, draft)
-- action="convert_to_draft" → Convert to draft (use pr_number)
-- action="ready_for_review" → Mark ready (use pr_number)
-- action="update_branch" → Update with base branch (use pr_number)
-- action="comment" → Add comment (use pr_number, comment)
-- action="inline_comment" → Comment on specific line (use pr_number, path, line, comment, side)
-- action="suggest" → Add code suggestion (use pr_number, path, line, suggestion, comment)
-- action="resolve_thread" → Resolve review thread (use thread_id)
-- action="unresolve_thread" → Unresolve review thread (use thread_id)
-- action="enable_auto_merge" → Enable auto-merge (use pr_number, merge_method)
-- action="disable_auto_merge" → Disable auto-merge (use pr_number)
-
-AI REVIEW:
-- action="review" → AI code review (use pr_number, post_review_to_github: true/false)
-  - post_review_to_github=false → Returns review in Discord (default)
-  - post_review_to_github=true → Posts review as GitHub comment
-
-Examples:
-- "Show open PRs" → action="list", state="open"
-- "What's in PR #123?" → action="get", pr_number=123
-- "Request review from alice" → action="request_review", pr_number=123, reviewers=["alice"]
-- "Merge #123" → action="merge", pr_number=123
-- "Review PR #123" → action="review", pr_number=123
-- "Comment on line 42 of main.py" → action="inline_comment", pr_number=123, path="main.py", line=42, comment="Fix this"
-- "Suggest fix" → action="suggest", pr_number=123, path="main.py", line=42, suggestion="fixed_code()"
-- "Enable auto-merge" → action="enable_auto_merge", pr_number=123, merge_method="squash"
-- "Show workflow file in PR branch" → action="get_file_at_ref", file_path=".github/workflows/ci.yml", ref="feat-branch" """,
+Actions:
+- get: Get PR details (pr_number)
+- list: List PRs (state, limit, base)
+- get_files/get_diff/get_checks/get_commits: PR details (pr_number)
+- get_threads/get_review_comments: Review discussions (pr_number)
+- get_file_at_ref: Get file content at branch/commit (file_path, ref)
+- review: AI code review (pr_number, post_review_to_github)
+- comment: Add comment (pr_number, comment)
+- inline_comment: Comment on line (pr_number, path, line, comment, side) [admin]
+- suggest: Code suggestion (pr_number, path, line, suggestion) [admin]
+- request_review/remove_reviewer: Manage reviewers (pr_number, reviewers) [admin]
+- approve: Approve PR (pr_number, body) [admin]
+- request_changes: Request changes (pr_number, body) [admin]
+- merge: Merge PR (pr_number, merge_method) [admin, confirm]
+- close/reopen: (pr_number) [admin, confirm for close]
+- create: New PR (title, head, base, body, draft) [admin]
+- update: Edit PR (pr_number, title, body) [admin]
+- convert_to_draft/ready_for_review: Draft status (pr_number) [admin]
+- update_branch: Sync with base (pr_number) [admin]
+- resolve_thread/unresolve_thread: Thread status (thread_id) [admin]
+- enable_auto_merge/disable_auto_merge: Auto-merge (pr_number, merge_method) [admin]""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -571,62 +497,26 @@ Examples:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """CODE AGENT - Flexible git operations and autonomous coding.
+            "description": """Code agent for git operations and autonomous coding. USE THIS TOOL - don't say "I cannot".
 
-FULL TASK WORKFLOW:
-- action="task" → Full autonomous task (understand → plan → code → test → fix → commit)
-- action="task" + test_only=true → Code and test only, NO commit/PR (user decides after seeing results)
-- action="plan" → Just create a plan without executing
-- action="status" → Check status of running task
-- action="destroy_sandbox" → Destroy a sandbox (needs: sandbox_id) - only sandbox creator can confirm
+Autonomous Tasks:
+- task: Full coding task (plan → code → test → fix). Use test_only=true to skip commit.
+- plan: Create plan without executing
+- status: Check task status (task_id)
 
-SANDBOX OPERATIONS (use sandbox_id from previous task):
-- action="run_in_sandbox" → Run command in existing sandbox (needs: sandbox_id, command)
-- action="read_sandbox_file" → Read file from sandbox (needs: sandbox_id, file_path)
-- action="write_sandbox_file" → Write file to sandbox (needs: sandbox_id, file_path, file_content)
-- action="destroy_sandbox" → Destroy sandbox (needs: sandbox_id) - only creator can confirm
+Sandbox Operations (use sandbox_id from task):
+- run_in_sandbox: Run command (sandbox_id, command)
+- read_sandbox_file/write_sandbox_file: File ops (sandbox_id, file_path)
+- destroy_sandbox: Cleanup (sandbox_id) [confirm]
 
-FLEXIBLE GIT OPERATIONS (admin only):
-- action="list_branches" → List all branches in repo
-- action="create_branch" → Create new branch (needs: new_branch)
-- action="delete_branch" → Delete a branch (needs: new_branch) - NOT main/master!
-- action="read_file" → Read file from repo (needs: file_path)
-- action="list_files" → List files in repo (optional: pattern glob)
-- action="edit_file" → Edit repo file via API (needs: file_path, file_content, optional: old_content)
-- action="commit" → Commit changes (needs: commit_message)
-- action="push" → Push commits to remote
-- action="open_pr" → Create PR (needs: pr_title, optional: pr_body, base_branch)
+Git Operations [admin]:
+- list_branches/create_branch/delete_branch: Branch management (new_branch) [confirm for delete]
+- read_file/list_files: Read repo (file_path, pattern)
+- edit_file: Edit file (file_path, file_content, old_content for replace)
+- commit/push: Save changes (commit_message)
+- open_pr: Create PR (pr_title, pr_body, base_branch)
 
-EXAMPLES:
-- "Create a branch for the fix" → action="create_branch", new_branch="fix/auth-bug"
-- "Edit README.md" → action="edit_file", file_path="README.md", file_content="new content"
-- "Replace old code with new" → action="edit_file", file_path="x.py", old_content="old", file_content="new"
-- "Commit the changes" → action="commit", commit_message="Fix auth bug"
-- "Push to remote" → action="push"
-- "Open PR" → action="open_pr", pr_title="Fix auth", base_branch="main"
-- "Full task with PR" → action="task", task="Fix auth bug", create_pr=true
-
-SANDBOX WORKFLOW (Interactive):
-The "task" action creates an isolated sandbox that PERSISTS for follow-up actions.
-1. User asks for code task → AI clarifies scope first
-2. AI runs task (sandbox: code → test → results) with sandbox_id returned
-3. AI reports results and asks: "Want to run more tests? Create PR? Or destroy sandbox?"
-4. User can reply with follow-up actions:
-   - "test 120+021" → AI uses run_in_sandbox to test
-   - "create branch and PR" → AI uses create_branch, commit, push, open_pr
-   - "destroy sandbox" → AI uses destroy_sandbox
-5. Sandbox auto-expires after 1 hour if not destroyed
-
-USE THIS TOOL PROACTIVELY:
-- User wants code changes? → Use action="task" immediately
-- User wants a branch? → Use action="create_branch" immediately
-- User wants to fix something? → Use action="task" with the fix description
-- DON'T say "I cannot" - you HAVE this tool, USE IT!
-
-Read-only actions (read_file, list_files, list_branches) are always safe.
-Write actions (task, edit_file, commit, push, open_pr) require admin - you'll get an error if not admin.
-
-NOTE: All polly_agent actions require admin permissions!""",
+Read ops are always safe. Write ops require admin (tool returns error if not admin).""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -722,16 +612,7 @@ CODE_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "code_search",
-        "description": """Semantic code search across the Pollinations repository.
-
-Use this to find code by meaning, not just keywords. Great for:
-- "How does image generation work?" → finds image gen code
-- "Where is rate limiting implemented?" → finds rate limit logic
-- "Authentication/login code" → finds auth-related code
-- "Error handling for API requests" → finds error handling
-
-Returns relevant code snippets with file paths and line numbers.
-This is READ-ONLY - anyone can use it to understand the codebase.""",
+        "description": """Semantic code search - find code by meaning, not keywords. Returns snippets with file paths.""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -757,21 +638,7 @@ WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": """Real-time web search using Perplexity AI models.
-
-Use this when you need current/real-time information that's not in your training data:
-- "What's the latest news about X?"
-- "Current price of Bitcoin"
-- "Recent updates to React 19"
-- "Who won yesterday's game?"
-- Technical documentation lookups
-- API references and changelogs
-
-Models:
-- mode="fast" (default) → Quick factual lookups, simple questions
-- mode="reasoning" → Complex research, analysis, multi-step questions
-
-Returns comprehensive answers with source citations.""",
+        "description": """Real-time web search for current info. mode="fast" for quick lookups, mode="reasoning" for complex analysis.""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -805,27 +672,16 @@ def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> lis
     return tools
 
 
-# NOTE: Admin action checks are now handled in bot.py with tool-specific sets:
-# - ISSUE_ADMIN_ACTIONS: close, reopen, edit, label, unlabel, assign, unassign, milestone, lock, link, create_sub_issue, add_sub_issue, remove_sub_issue
-# - PR_ADMIN_ACTIONS: request_review, remove_reviewer, approve, request_changes, merge, update, create, convert_to_draft, ready_for_review, update_branch, inline_comment, suggest, resolve_thread, unresolve_thread, enable_auto_merge, disable_auto_merge, close, reopen
-# - PROJECT_ADMIN_ACTIONS: add, remove, set_status, set_field
-# - polly_agent: ALL actions require admin
+# NOTE: Admin action checks handled in bot.py. polly_agent write ops require admin, read ops are public.
 
-# Risky actions that require user confirmation even for admins
-# These are destructive or hard-to-reverse operations
+# Risky actions - AI uses judgment but these are hints for high-risk ops
+# The AI decides contextually what needs confirmation based on impact
 RISKY_ACTIONS = {
-    # github_issue
-    "close": "close this issue",
-    "lock": "lock this issue",
-    "edit": "edit this issue's title/body",
-    # github_pr
     "merge": "merge this PR",
-    "close": "close this PR",
-    "request_changes": "request changes on this PR",
-    # polly_agent
+    "close": "close this",
     "delete_branch": "delete this branch",
-    # github_project
-    "remove": "remove this item from project",
+    "lock": "lock this issue",
+    # AI can also confirm other high-impact ops like bulk edits, force push, etc.
 }
 
 # =============================================================================
@@ -920,116 +776,55 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict]) -> list[dic
 # TOOL-BASED SYSTEM PROMPT - AI has FULL AUTONOMY
 # =============================================================================
 
-TOOL_SYSTEM_PROMPT = """You are Polly, a GitHub assistant for Pollinations.AI. SPEED IS EVERYTHING.
+TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI.
 
-## Current Time: {current_utc}
+## Time: {current_utc}
 
-## Project Context:
+## Context:
 {repo_info}
 
-## Where You Operate:
-- **Discord**: Users @mention you in channels/threads
-- **GitHub**: Users @mention you in issues, PRs, comments, and reviews
-- You have FULL access to issues, PRs, projects, code, and repository operations
-- This is bidirectional - you respond wherever you're mentioned!
+## Your Tools (USE THEM - if listed, you HAVE it):
+- `github_overview` - Get repo summary (issues, labels, milestones, projects) in ONE call
+- `github_issue` - Issues: get, search, create, comment, close, label, assign, sub-issues
+- `github_pr` - PRs: get, list, review, approve, merge, inline comments, suggestions
+- `github_project` - Projects V2: list, view, add items, set status/fields
+- `polly_agent` - Code agent: branches, file edits, commits, PRs, autonomous coding tasks
+- `github_custom` - Raw data fetching for custom analysis
+- `web_search` - Real-time web search (mode="fast" or "reasoning")
+- `code_search` - Semantic code search by meaning
 
-## Tools:
-- `github_overview` - FAST: Get issues + labels + milestones + projects in ONE call (use first!)
-- `github_issue` - All issue ops (get, search, create, comment, close, label, assign, sub-issues, etc.)
-- `github_pr` - All PR ops (get, list, review, approve, merge, inline comments, suggestions, etc.)
-- `github_project` - Projects V2 (list, view, add, set_status, set_field)
-- `polly_agent` - Code agent for autonomous coding tasks (create branches, edit files, open PRs)
-- `github_custom` - Flexible data fetching for analysis
-- `web_search` - Real-time web search (news, docs, current info). Use mode="fast" for quick lookups, mode="reasoning" for complex questions
-- `code_search` - Semantic code search (if enabled) - find code by meaning
+## Core Behaviors:
 
-Admin actions (close, edit, label, assign, merge, approve, request_review, code edits, etc.) require admin role.
+**1. PARALLEL CALLS (mandatory):**
+Call ALL needed tools in ONE response. Never sequential.
+User: "fix issue 5735" → Call github_issue + polly_agent together, not one-by-one.
 
-## SPEED - BATCH ALL TOOL CALLS:
-CRITICAL: Make ALL needed tool calls in ONE response. NEVER make one call, wait, then make another.
-- Need to get issue AND search? → Call BOTH tools in same response
-- Need issues + labels + project info? → Call ALL 3 in one go
-- User reports problem? → Call `find_similar` immediately in FIRST response
-- Multiple lookups? → Call them ALL together, NOT one at a time
+**2. PROACTIVE (fetch, don't ask):**
+User mentions #123? → Call tool to GET it, don't ask for details.
+Need file contents? → Use polly_agent or github_pr to read it.
+Only ask when info truly doesn't exist.
 
-BAD (slow - 3 round trips):
-1. Call get_issue → wait → 2. Call list_labels → wait → 3. Call search
+**3. USE YOUR TOOLS:**
+Never say "I cannot" or "tool not available". If it's in your function list, CALL IT.
+polly_agent handles: branches, file edits, commits, PRs, coding tasks - USE IT.
 
-GOOD (fast - 1 round trip):
-1. Call get_issue + list_labels + search all at once → respond with everything
-
-## Be Proactive - USE TOOLS FIRST, ASK LATER:
-CRITICAL: You have tools to get ANY info you need. NEVER ask the user for info you can fetch yourself!
-
-- User mentions issue/PR number? → Call `github_issue` or `github_pr` to GET it, don't ask for details
-- User mentions repo? → You can access ANY public repo, not just pollinations/pollinations
-- Need context about a problem? → Call `github_issue` with action="search" or use `github_custom`
-- User mentions problem? → Immediately call `find_similar` to check for duplicates
-- Need file contents? → Use `github_pr` action="get_file" or `polly_agent` to read it
-- Vague question? → Search/fetch first, THEN ask for specifics only if tools don't help
-- User's issue matches existing one? → Add their info as a comment
-
-BAD: "Can you provide the issue URL?" or "What repo is this in?"
-GOOD: Call github_issue/github_pr with what you know, infer repo from context, search if needed
-
-The user mentioned it = you can look it up. Only ask when info truly doesn't exist in GitHub.
+**4. CONFIRM DESTRUCTIVE/RISKY OPS (admins only):**
+Ask confirmation for destructive actions: merge, delete_branch, lock, close PR, bulk edits, etc.
+Use judgment - if it's hard to undo or high-impact, confirm first. Low-risk ops: just do it.
+Only original requester can confirm (not other users).
 
 ## Response Style:
-**Discord:** Concise, no fluff, bullet points, match user's energy
-**GitHub issues:** Clear title, structured body (Problem → Steps → Expected → Actual)
-
-## Link Formatting (CRITICAL - ALWAYS INCLUDE LINKS):
-EVERY reference to a GitHub resource MUST include a clickable link for quick access!
-Users need links to verify info, take action, or navigate quickly - never make them search.
-
-**Format:** `[visible text](<url>)` - angle brackets suppress Discord previews
-
-**Always link these:**
-- Issues/PRs: `[#123](<https://github.com/owner/repo/issues/123>)` or `[#123](<https://github.com/owner/repo/pull/123>)`
-- Users: `[@username](<https://github.com/username>)`
-- Files: `[filename.py](<https://github.com/owner/repo/blob/main/path/filename.py>)`
-- Commits: `[abc1234](<https://github.com/owner/repo/commit/abc1234>)`
-- Branches: `[branch-name](<https://github.com/owner/repo/tree/branch-name>)`
-- Projects: `[Project Name](<https://github.com/orgs/owner/projects/1>)`
-- Workflows/Actions: `[workflow](<https://github.com/owner/repo/actions/runs/123>)`
-
-**Examples:**
-- Single: `Created [#456](<https://...>) - Add dark mode`
-- List: `• [#123](<url>) Fix login bug` / `• [#124](<url>) Add tests`
-- PR by user: `[#789](<url>) by [@alice](<https://github.com/alice>)`
-
-**Bad (never do this):**
-- `#123` without link - user can't click it
-- `https://github.com/...` bare URL - creates embed spam
-- `[#123](url)` without `<>` - creates embed spam
-
-## Multilingual:
-Offer to chat in user's language, but GitHub content MUST be in English.
+- Discord: Concise, bullet points, no fluff
+- GitHub: Clear, structured (Problem → Steps → Expected → Actual)
+- Links: Always use `[#123](<url>)` format (angle brackets suppress embeds)
+- Multilingual OK, but GitHub content in English
 
 ## Hard Rules:
-1. NEVER make up issue numbers or fake data
-2. NEVER create duplicates without checking first
-3. NEVER use @mentions in GitHub (use backticks: `username`)
-4. NEVER retry failed tools blindly - ask user for clarification
-5. On errors, tell user clearly and offer alternatives
-6. Discord usernames ≠ GitHub usernames. If you need to assign/mention someone on GitHub, ask for their GitHub username first - don't assume it matches their Discord name
-7. If the user's request is unclear or you're unsure what they want, ASK FOLLOW-UP QUESTIONS instead of guessing or calling tools repeatedly
-8. NEVER return empty responses - always say something helpful, even if just asking for clarification
-9. For CODE ACTIONS (polly_agent): ALWAYS ask before write operations! Clarify: read-only vs changes? branch? PR? commit? NEVER assume - the user must explicitly confirm what actions to take
-
-## RISKY ACTIONS - ADMIN ONLY:
-These actions require admin privileges: merge, close, delete_branch, lock, request_changes, edit issue/PR, remove from project, assign, add/remove labels, set milestone.
-
-**Non-admins:** Do NOT ask for confirmation on admin actions - they can't do them anyway.
-
-**Admins:** Ask for confirmation before destructive operations like merge, close, delete, lock, or bulk edits. Wait for "yes"/"confirm" before executing.
-
-## CONFIRMATION MUST COME FROM ORIGINAL REQUESTER (admins only):
-When you ask an admin for confirmation:
-1. REMEMBER who made the original request
-2. Only accept confirmation from that same user
-3. If a different user tries to confirm, tell them only the original requester can approve
-This prevents unauthorized users from approving destructive operations they didn't initiate."""
+- Never fabricate data or issue numbers
+- Check duplicates before creating issues
+- GitHub mentions: use backticks (`username`), not @
+- Discord username ≠ GitHub username - ask if needed
+- On errors: explain clearly, offer alternatives"""
 
 def get_tool_system_prompt() -> str:
     """Get the tool system prompt with current UTC time."""

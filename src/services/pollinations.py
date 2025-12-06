@@ -178,9 +178,9 @@ class PollinationsClient:
         # Build system prompt with admin context if applicable (includes current UTC time)
         system_content = get_tool_system_prompt()
         if is_admin:
-            system_content += "\n\n## ADMIN MODE ACTIVE\nThis user has admin privileges. You have access to additional tools: close_issue, reopen_issue, edit_issue, add_labels, remove_labels, assign_issue, unassign_issue, link_issues, set_milestone, lock_issue, add_to_project. Use them wisely - ask for confirmation on risky actions like closing issues or major edits. For project URLs like github.com/orgs/pollinations/projects/20, extract the number (20) for add_to_project."
+            system_content += "\n\n## ADMIN MODE\nUser is admin. All tools available. Confirm before destructive ops (merge, delete, lock, close PR, bulk edits, etc.) - use judgment."
         else:
-            system_content += "\n\n## USER PERMISSIONS\nThis user is NOT an admin. They can search, view, create issues, and comment - but NOT close/edit/assign issues, merge PRs, or use the code agent. If they ask for admin actions, just let them know they don't have permission."
+            system_content += "\n\n## USER MODE\nUser is NOT admin. Read-only + create/comment only. Admin actions will return permission error."
 
         # Build messages
         messages = [{"role": "system", "content": system_content}]
