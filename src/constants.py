@@ -499,10 +499,12 @@ Actions:
             "name": "polly_agent",
             "description": """Code agent for git operations and autonomous coding. USE THIS - never say "I cannot".
 
-**action=task AUTO-CREATES sandbox** - just call it with task description, sandbox spins up automatically.
+**action=task AUTO-CREATES sandbox** - just call it, sandbox spins up automatically.
+
+**CRITICAL: task param must include FULL context** - issue body, file paths, code snippets, everything the agent needs. Don't just pass "fix issue 5735", pass the FULL issue content you got from github_issue.
 
 Autonomous Tasks:
-- task: Full coding task (auto-sandbox → plan → code → test → fix → PR). Returns sandbox_id for follow-up.
+- task: Full coding task. Pass COMPLETE context (issue body, relevant code). Returns sandbox_id.
 - plan: Create plan without executing
 - status: Check task status (task_id)
 
@@ -818,6 +820,7 @@ Only ask when info truly doesn't exist.
 **3. USE YOUR TOOLS:**
 Never say "I cannot" or "tool not available". If it's in your function list, CALL IT.
 polly_agent handles: branches, file edits, commits, PRs, coding tasks - USE IT.
+When calling polly_agent(task=...), include FULL context in the task param (issue body, file paths, code).
 
 **4. CONFIRM DESTRUCTIVE/RISKY OPS (admins only):**
 Ask confirmation for destructive actions: merge, delete_branch, lock, close PR, bulk edits, etc.
