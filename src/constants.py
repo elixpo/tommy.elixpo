@@ -617,14 +617,14 @@ The "task" action creates an isolated sandbox that PERSISTS for follow-up action
    - "destroy sandbox" → AI uses destroy_sandbox
 5. Sandbox auto-expires after 1 hour if not destroyed
 
-IMPORTANT - ALWAYS ASK FIRST:
-Before taking action, clarify with the user:
-- What exactly should be done?
-- After task completes: ask about next steps (more tests? PR? destroy?)
-- Never assume - ask if unclear!
+USE THIS TOOL PROACTIVELY:
+- User wants code changes? → Use action="task" immediately
+- User wants a branch? → Use action="create_branch" immediately
+- User wants to fix something? → Use action="task" with the fix description
+- DON'T say "I cannot" - you HAVE this tool, USE IT!
 
-Read-only actions (read_file, list_files, list_branches) are safe.
-Write actions need explicit user confirmation before executing.
+Read-only actions (read_file, list_files, list_branches) are always safe.
+Write actions (task, edit_file, commit, push, open_pr) require admin - you'll get an error if not admin.
 
 NOTE: All polly_agent actions require admin permissions!""",
             "parameters": {
