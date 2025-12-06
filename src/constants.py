@@ -570,7 +570,7 @@ Examples:
     {
         "type": "function",
         "function": {
-            "name": "github_code",
+            "name": "polly_agent",
             "description": """CODE AGENT - Flexible git operations and autonomous coding.
 
 FULL TASK WORKFLOW:
@@ -626,7 +626,7 @@ Before taking action, clarify with the user:
 Read-only actions (read_file, list_files, list_branches) are safe.
 Write actions need explicit user confirmation before executing.
 
-NOTE: All github_code actions require admin permissions!""",
+NOTE: All polly_agent actions require admin permissions!""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -809,7 +809,7 @@ def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> lis
 # - ISSUE_ADMIN_ACTIONS: close, reopen, edit, label, unlabel, assign, unassign, milestone, lock, link, create_sub_issue, add_sub_issue, remove_sub_issue
 # - PR_ADMIN_ACTIONS: request_review, remove_reviewer, approve, request_changes, merge, update, create, convert_to_draft, ready_for_review, update_branch, inline_comment, suggest, resolve_thread, unresolve_thread, enable_auto_merge, disable_auto_merge, close, reopen
 # - PROJECT_ADMIN_ACTIONS: add, remove, set_status, set_field
-# - github_code: ALL actions require admin
+# - polly_agent: ALL actions require admin
 
 # Risky actions that require user confirmation even for admins
 # These are destructive or hard-to-reverse operations
@@ -822,7 +822,7 @@ RISKY_ACTIONS = {
     "merge": "merge this PR",
     "close": "close this PR",
     "request_changes": "request changes on this PR",
-    # github_code
+    # polly_agent
     "delete_branch": "delete this branch",
     # github_project
     "remove": "remove this item from project",
@@ -851,7 +851,7 @@ TOOL_KEYWORDS = {
         r'\b(projects?\s*(board)?|boards?|kanban|sprint|columns?|todo|in\s*progress|done|backlog)\b',
         re.IGNORECASE
     ),
-    "github_code": re.compile(
+    "polly_agent": re.compile(
         r'\b(implement\w*|refactor\w*|coding\s*agent|autonomous|'
         r'fix\s*(issue|bug|this|it|the)|make\s*(branch|changes)|'
         r'edit\s*(the\s*)?(code|file|readme)|update\s*(the\s*)?(code|file)|'
@@ -938,7 +938,7 @@ TOOL_SYSTEM_PROMPT = """You are Polly, a GitHub assistant for Pollinations.AI. S
 - `github_issue` - All issue ops (get, search, create, comment, close, label, assign, sub-issues, etc.)
 - `github_pr` - All PR ops (get, list, review, approve, merge, inline comments, suggestions, etc.)
 - `github_project` - Projects V2 (list, view, add, set_status, set_field)
-- `github_code` - Code agent for autonomous coding tasks (create branches, edit files, open PRs)
+- `polly_agent` - Code agent for autonomous coding tasks (create branches, edit files, open PRs)
 - `github_custom` - Flexible data fetching for analysis
 - `web_search` - Real-time web search (news, docs, current info). Use mode="fast" for quick lookups, mode="reasoning" for complex questions
 - `code_search` - Semantic code search (if enabled) - find code by meaning
@@ -965,7 +965,7 @@ CRITICAL: You have tools to get ANY info you need. NEVER ask the user for info y
 - User mentions repo? → You can access ANY public repo, not just pollinations/pollinations
 - Need context about a problem? → Call `github_issue` with action="search" or use `github_custom`
 - User mentions problem? → Immediately call `find_similar` to check for duplicates
-- Need file contents? → Use `github_pr` action="get_file" or `github_code` to read it
+- Need file contents? → Use `github_pr` action="get_file" or `polly_agent` to read it
 - Vague question? → Search/fetch first, THEN ask for specifics only if tools don't help
 - User's issue matches existing one? → Add their info as a comment
 
@@ -1015,7 +1015,7 @@ Offer to chat in user's language, but GitHub content MUST be in English.
 6. Discord usernames ≠ GitHub usernames. If you need to assign/mention someone on GitHub, ask for their GitHub username first - don't assume it matches their Discord name
 7. If the user's request is unclear or you're unsure what they want, ASK FOLLOW-UP QUESTIONS instead of guessing or calling tools repeatedly
 8. NEVER return empty responses - always say something helpful, even if just asking for clarification
-9. For CODE ACTIONS (github_code): ALWAYS ask before write operations! Clarify: read-only vs changes? branch? PR? commit? NEVER assume - the user must explicitly confirm what actions to take
+9. For CODE ACTIONS (polly_agent): ALWAYS ask before write operations! Clarify: read-only vs changes? branch? PR? commit? NEVER assume - the user must explicitly confirm what actions to take
 
 ## RISKY ACTIONS - ADMIN ONLY:
 These actions require admin privileges: merge, close, delete_branch, lock, request_changes, edit issue/PR, remove from project, assign, add/remove labels, set milestone.

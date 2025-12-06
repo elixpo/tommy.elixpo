@@ -558,7 +558,7 @@ async def process_message(
         "github_issue": TOOL_HANDLERS["github_issue"],
         "github_project": TOOL_HANDLERS["github_project"],
         "github_pr": TOOL_HANDLERS["github_pr"],
-        "github_code": CODE_AGENT_HANDLERS.get("github_code"),
+        "polly_agent": CODE_AGENT_HANDLERS.get("polly_agent"),
     }
 
     # Tool-specific admin actions (some actions like "create" are admin for PRs but not issues)
@@ -573,10 +573,10 @@ async def process_message(
     def check_admin(tool_name: str, action: str) -> dict | None:
         """
         Global admin check. Returns error dict if blocked, None if allowed.
-        - github_code: ALL actions require admin (tool modifies repos)
+        - polly_agent: ALL actions require admin (tool modifies repos)
         - Others: Check tool-specific admin actions
         """
-        if tool_name == "github_code":
+        if tool_name == "polly_agent":
             # Code agent is entirely admin-only
             if not user_is_admin:
                 return {"error": "Code agent requires admin permissions. This tool can modify repository code, create branches, and open PRs - ask a team member with admin access!"}
@@ -614,14 +614,14 @@ async def process_message(
         kwargs["reporter"] = session.original_author_name
         return await original_handlers["github_pr"](**kwargs)
 
-    async def wrapped_github_code(**kwargs):
+    async def wrapped_polly_agent(**kwargs):
         """Wrapper that injects Discord context for code agent (admin only)."""
-        logger.info(f"wrapped_github_code called with action={kwargs.get('action', 'N/A')}, user_is_admin={user_is_admin}")
-        if err := check_admin("github_code", kwargs.get("action", "")):
-            logger.warning(f"wrapped_github_code blocked by admin check: {err}")
+        logger.info(f"wrapped_polly_agent called with action={kwargs.get('action', 'N/A')}, user_is_admin={user_is_admin}")
+        if err := check_admin("polly_agent", kwargs.get("action", "")):
+            logger.warning(f"wrapped_polly_agent blocked by admin check: {err}")
             return err
-        if original_handlers["github_code"] is None:
-            logger.warning("wrapped_github_code: original handler is None")
+        if original_handlers["polly_agent"] is None:
+            logger.warning("wrapped_polly_agent: original handler is None")
             return {"error": "Code agent not available"}
         # Inject Discord context
         kwargs["discord_channel"] = channel
@@ -631,14 +631,14 @@ async def process_message(
         kwargs["_is_admin"] = True  # Already checked above
         kwargs.setdefault("interactive", True)
         kwargs.setdefault("human_review", True)
-        return await original_handlers["github_code"](**kwargs)
+        return await original_handlers["polly_agent"](**kwargs)
 
     # Register wrapped handlers temporarily
     pollinations_client.register_tool_handler("github_issue", wrapped_github_issue)
     pollinations_client.register_tool_handler("github_project", wrapped_github_project)
     pollinations_client.register_tool_handler("github_pr", wrapped_github_pr)
-    if original_handlers["github_code"]:
-        pollinations_client.register_tool_handler("github_code", wrapped_github_code)
+    if original_handlers["polly_agent"]:
+        pollinations_client.register_tool_handler("polly_agent", wrapped_polly_agent)
 
     try:
         # Process with native tool calling
@@ -706,8 +706,8 @@ async def process_message(
         pollinations_client.register_tool_handler("github_issue", original_handlers["github_issue"])
         pollinations_client.register_tool_handler("github_project", original_handlers["github_project"])
         pollinations_client.register_tool_handler("github_pr", original_handlers["github_pr"])
-        if original_handlers["github_code"]:
-            pollinations_client.register_tool_handler("github_code", original_handlers["github_code"])
+        if original_handlers["polly_agent"]:
+            pollinations_client.register_tool_handler("polly_agent", original_handlers["polly_agent"])
 
 
 async def send_long_message(

@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _running_tasks: dict[str, dict] = {}
 
 
-async def tool_github_code(
+async def tool_polly_agent(
     action: str,
     task: Optional[str] = None,
     repo: str = "pollinations/pollinations",
@@ -187,7 +187,7 @@ async def tool_github_code(
         return {"error": f"Unknown action: {action}. Available: task, status, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
 
     except Exception as e:
-        logger.exception("Error in github_code tool")
+        logger.exception("Error in polly_agent tool")
         return {"error": str(e)}
 
 
@@ -857,5 +857,5 @@ async def _cleanup_task(task_id: str, delay: int):
 
 # Export tool handler
 TOOL_HANDLERS = {
-    "github_code": tool_github_code,
+    "polly_agent": tool_polly_agent,
 }

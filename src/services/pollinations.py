@@ -235,7 +235,7 @@ class PollinationsClient:
         # SECURITY: Remove admin-only tools for non-admin users
         # This prevents AI from even seeing these tools, so it won't ask for confirmation
         if not is_admin:
-            ADMIN_ONLY_TOOLS = {"github_code"}  # Entirely admin-only tools
+            ADMIN_ONLY_TOOLS = {"polly_agent"}  # Entirely admin-only tools
             all_tools = [t for t in all_tools if t.get("function", {}).get("name") not in ADMIN_ONLY_TOOLS]
 
         # Smart tool filtering - only send relevant tools based on user intent
@@ -332,7 +332,7 @@ class PollinationsClient:
 
         async def execute_single(tool_call: dict) -> dict:
             func_name = tool_call["function"]["name"]
-            # Strip API prefix if present (e.g., "default_api:github_code" -> "github_code")
+            # Strip API prefix if present (e.g., "default_api:polly_agent" -> "polly_agent")
             if ":" in func_name:
                 func_name = func_name.split(":")[-1]
             try:
