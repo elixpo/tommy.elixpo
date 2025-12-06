@@ -192,6 +192,15 @@ class SandboxManager:
 
         sandbox.container_id = result.stdout.strip()
 
+        # Install git (node:20-slim doesn't include it)
+        install_git = await self._run_host_command([
+            "docker", "exec", f"polli_sandbox_{sandbox.id}",
+            "sh", "-c", "apt-get update && apt-get install -y git --no-install-recommends && rm -rf /var/lib/apt/lists/*"
+        ], timeout=120)
+
+        if install_git.exit_code != 0:
+            logger.warning(f"Failed to install git in container: {install_git.stderr}")
+
     async def _create_local_sandbox(self, sandbox: Sandbox):
         """Create local sandbox (no Docker)."""
         # Just use the workspace directory
