@@ -242,9 +242,12 @@ class PollinationsClient:
         # This saves tokens and speeds up AI reasoning
         tools = filter_tools_by_intent(user_message, all_tools) if user_message else all_tools
 
+        # Log available tools for debugging
+        all_tool_names = [t["function"]["name"] for t in all_tools]
+        filtered_tool_names = [t["function"]["name"] for t in tools]
+        logger.info(f"Available tools (is_admin={is_admin}): {', '.join(all_tool_names)}")
         if len(tools) < len(all_tools):
-            tool_names = [t["function"]["name"] for t in tools]
-            logger.debug(f"Filtered tools to: {', '.join(tool_names)}")
+            logger.info(f"Filtered tools to: {', '.join(filtered_tool_names)}")
 
         for iteration in range(max_iterations):
             start_time = time.time()

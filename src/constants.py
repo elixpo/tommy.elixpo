@@ -853,9 +853,10 @@ TOOL_KEYWORDS = {
     ),
     "github_code": re.compile(
         r'\b(implement\w*|refactor\w*|coding\s*agent|autonomous|'
-        r'make\s*changes|edit\s*(the\s*)?(code|file|readme)|update\s*(the\s*)?(code|file)|'
+        r'fix\s*(issue|bug|this|it|the)|make\s*(branch|changes)|'
+        r'edit\s*(the\s*)?(code|file|readme)|update\s*(the\s*)?(code|file)|'
         r'create\s*(a\s*)?branch|new\s*branch|delete\s*branch|'
-        r'commit|push\s*(to\s*)?|read\s*file|list\s*files)\b',
+        r'commit|push\s*(to\s*)?|read\s*file|list\s*files|write\s*code)\b',
         re.IGNORECASE
     ),
     "github_custom": re.compile(
