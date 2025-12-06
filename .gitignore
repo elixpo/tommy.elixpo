@@ -59,7 +59,10 @@ htmlcov/
 # Others 
 Polly-starter.sh
 Polly-stopper.sh
+
 # Build
 dist/
 build/
 *.egg-info/
+
+# Test auto-deploy
