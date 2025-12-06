@@ -318,16 +318,8 @@ class ModelRouter:
             "messages": messages,
             "max_tokens": max_tokens or model_config.max_tokens,
 
-            # Temperature & sampling
+            # Temperature only - some models (Claude/Bedrock) don't allow both temperature and top_p
             "temperature": temperature if temperature is not None else task_params.get("temperature", 0.7),
-            "top_p": task_params.get("top_p", 1.0),
-
-            # Penalties for better code output
-            "frequency_penalty": task_params.get("frequency_penalty", 0),
-            "presence_penalty": task_params.get("presence_penalty", 0),
-
-            # Single response
-            "n": 1,
 
             # Seed for reproducibility (set per attempt)
             "seed": 0,
