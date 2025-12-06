@@ -115,6 +115,7 @@ class AgentResult:
     repo: str
     branch: str
     changes: list[dict]
+    sandbox_id: Optional[str] = None  # Sandbox persists for follow-up actions
     commit_sha: Optional[str] = None
     pr_url: Optional[str] = None
     error: Optional[str] = None
@@ -381,9 +382,10 @@ class CodeAgent:
                 await report_progress("failed", f"Error: {str(e)}")
 
         finally:
-            # Clean up sandbox
-            if state.sandbox_id:
-                await self.sandboxes.destroy(state.sandbox_id)
+            # Don't auto-destroy sandbox - let AI decide based on user response
+            # User might want to commit/PR after seeing results
+            # Sandbox will be cleaned up by periodic cleanup task (1 hour)
+            pass
 
         return self._create_result(state, start_time)
 
@@ -767,6 +769,7 @@ Changes:
             repo=state.repo,
             branch=state.branch,
             changes=state.changes_made,
+            sandbox_id=state.sandbox_id,  # Sandbox persists for follow-up actions
             commit_sha=state.commit_sha,
             pr_url=state.pr_url,
             error=state.error,

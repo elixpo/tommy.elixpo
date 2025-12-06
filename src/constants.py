@@ -575,17 +575,25 @@ Examples:
 
 FULL TASK WORKFLOW:
 - action="task" → Full autonomous task (understand → plan → code → test → fix → commit)
+- action="task" + test_only=true → Code and test only, NO commit/PR (user decides after seeing results)
 - action="plan" → Just create a plan without executing
 - action="status" → Check status of running task
+- action="destroy_sandbox" → Destroy a sandbox (needs: sandbox_id) - only sandbox creator can confirm
+
+SANDBOX OPERATIONS (use sandbox_id from previous task):
+- action="run_in_sandbox" → Run command in existing sandbox (needs: sandbox_id, command)
+- action="read_sandbox_file" → Read file from sandbox (needs: sandbox_id, file_path)
+- action="write_sandbox_file" → Write file to sandbox (needs: sandbox_id, file_path, file_content)
+- action="destroy_sandbox" → Destroy sandbox (needs: sandbox_id) - only creator can confirm
 
 FLEXIBLE GIT OPERATIONS (admin only):
 - action="list_branches" → List all branches in repo
 - action="create_branch" → Create new branch (needs: new_branch)
 - action="delete_branch" → Delete a branch (needs: new_branch) - NOT main/master!
-- action="read_file" → Read file contents (needs: file_path)
-- action="list_files" → List files (optional: pattern glob)
-- action="edit_file" → Edit a file (needs: file_path, file_content, optional: old_content for search/replace)
-- action="commit" → Commit staged changes (needs: commit_message)
+- action="read_file" → Read file from repo (needs: file_path)
+- action="list_files" → List files in repo (optional: pattern glob)
+- action="edit_file" → Edit repo file via API (needs: file_path, file_content, optional: old_content)
+- action="commit" → Commit changes (needs: commit_message)
 - action="push" → Push commits to remote
 - action="open_pr" → Create PR (needs: pr_title, optional: pr_body, base_branch)
 
@@ -598,14 +606,42 @@ EXAMPLES:
 - "Open PR" → action="open_pr", pr_title="Fix auth", base_branch="main"
 - "Full task with PR" → action="task", task="Fix auth bug", create_pr=true
 
+SANDBOX WORKFLOW (Interactive):
+The "task" action creates an isolated sandbox that PERSISTS for follow-up actions.
+1. User asks for code task → AI clarifies scope first
+2. AI runs task (sandbox: code → test → results) with sandbox_id returned
+3. AI reports results and asks: "Want to run more tests? Create PR? Or destroy sandbox?"
+4. User can reply with follow-up actions:
+   - "test 120+021" → AI uses run_in_sandbox to test
+   - "create branch and PR" → AI uses create_branch, commit, push, open_pr
+   - "destroy sandbox" → AI uses destroy_sandbox
+5. Sandbox auto-expires after 1 hour if not destroyed
+
+IMPORTANT - ALWAYS ASK FIRST:
+Before taking action, clarify with the user:
+- What exactly should be done?
+- After task completes: ask about next steps (more tests? PR? destroy?)
+- Never assume - ask if unclear!
+
+Read-only actions (read_file, list_files, list_branches) are safe.
+Write actions need explicit user confirmation before executing.
+
 NOTE: All github_code actions require admin permissions!""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["task", "plan", "status", "list_branches", "create_branch", "delete_branch", "read_file", "list_files", "edit_file", "commit", "push", "open_pr"],
+                        "enum": ["task", "plan", "status", "run_in_sandbox", "read_sandbox_file", "write_sandbox_file", "destroy_sandbox", "list_branches", "create_branch", "delete_branch", "read_file", "list_files", "edit_file", "commit", "push", "open_pr"],
                         "description": "Action to perform"
+                    },
+                    "sandbox_id": {
+                        "type": "string",
+                        "description": "Sandbox ID for sandbox operations (from previous task result)"
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to run in sandbox (for run_in_sandbox)"
                     },
                     "task": {
                         "type": "string",
@@ -658,6 +694,10 @@ NOTE: All github_code actions require admin permissions!""",
                     "create_pr": {
                         "type": "boolean",
                         "description": "Create PR after task completion"
+                    },
+                    "test_only": {
+                        "type": "boolean",
+                        "description": "Stop after testing - don't commit or PR. Use this to test code without making changes to repo. User can then decide to commit/PR separately."
                     },
                     "max_fix_attempts": {
                         "type": "integer",
@@ -963,6 +1003,7 @@ Offer to chat in user's language, but GitHub content MUST be in English.
 6. Discord usernames ≠ GitHub usernames. If you need to assign/mention someone on GitHub, ask for their GitHub username first - don't assume it matches their Discord name
 7. If the user's request is unclear or you're unsure what they want, ASK FOLLOW-UP QUESTIONS instead of guessing or calling tools repeatedly
 8. NEVER return empty responses - always say something helpful, even if just asking for clarification
+9. For CODE ACTIONS (github_code): ALWAYS ask before write operations! Clarify: read-only vs changes? branch? PR? commit? NEVER assume - the user must explicitly confirm what actions to take
 
 ## RISKY ACTIONS - ADMIN ONLY:
 These actions require admin privileges: merge, close, delete_branch, lock, request_changes, edit issue/PR, remove from project, assign, add/remove labels, set milestone.

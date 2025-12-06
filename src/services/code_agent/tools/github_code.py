@@ -157,7 +157,20 @@ async def tool_github_code(
                     max_fix_attempts=max_fix_attempts,
                 )
 
-        # Git operations - need a sandbox
+        # Sandbox operations - work with existing sandbox
+        if action == "run_in_sandbox":
+            return await _handle_run_in_sandbox(kwargs.get("sandbox_id"), kwargs.get("command"))
+
+        if action == "read_sandbox_file":
+            return await _handle_read_sandbox_file(kwargs.get("sandbox_id"), file_path)
+
+        if action == "write_sandbox_file":
+            return await _handle_write_sandbox_file(kwargs.get("sandbox_id"), file_path, file_content)
+
+        if action == "destroy_sandbox":
+            return await _handle_destroy_sandbox(kwargs.get("sandbox_id"), discord_user_name)
+
+        # Git operations - use GitHub API directly
         if action == "create_branch":
             return await _handle_create_branch(repo, branch, new_branch)
 
@@ -182,7 +195,7 @@ async def tool_github_code(
         if action == "open_pr":
             return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body)
 
-        return {"error": f"Unknown action: {action}. Available: task, plan, status, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr, list_branches"}
+        return {"error": f"Unknown action: {action}. Available: task, plan, status, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
 
     except Exception as e:
         logger.exception("Error in github_code tool")
@@ -217,6 +230,116 @@ async def _handle_status(task_id: Optional[str]) -> dict:
         "phase": task_info["phase"],
         "elapsed_seconds": elapsed,
         "messages": task_info.get("messages", [])[-5:],  # Last 5 messages
+    }
+
+
+async def _handle_run_in_sandbox(sandbox_id: Optional[str], command: Optional[str]) -> dict:
+    """Run a command in an existing sandbox."""
+    if not sandbox_id:
+        return {"error": "sandbox_id is required"}
+    if not command:
+        return {"error": "command is required"}
+
+    from ..sandbox import sandbox_manager
+
+    sandbox = sandbox_manager.sandboxes.get(sandbox_id)
+    if not sandbox:
+        return {"error": f"Sandbox {sandbox_id} not found. It may have been destroyed or expired."}
+
+    result = await sandbox_manager.execute(sandbox_id, command, timeout=120)
+
+    return {
+        "success": result.exit_code == 0,
+        "sandbox_id": sandbox_id,
+        "command": command,
+        "exit_code": result.exit_code,
+        "stdout": result.stdout[:4000] if result.stdout else "",
+        "stderr": result.stderr[:2000] if result.stderr else "",
+        "timed_out": result.timed_out,
+        "duration": result.duration,
+    }
+
+
+async def _handle_read_sandbox_file(sandbox_id: Optional[str], file_path: Optional[str]) -> dict:
+    """Read a file from an existing sandbox."""
+    if not sandbox_id:
+        return {"error": "sandbox_id is required"}
+    if not file_path:
+        return {"error": "file_path is required"}
+
+    from ..sandbox import sandbox_manager
+
+    sandbox = sandbox_manager.sandboxes.get(sandbox_id)
+    if not sandbox:
+        return {"error": f"Sandbox {sandbox_id} not found. It may have been destroyed or expired."}
+
+    try:
+        content = await sandbox_manager.read_file(sandbox_id, file_path)
+        return {
+            "success": True,
+            "sandbox_id": sandbox_id,
+            "file_path": file_path,
+            "content": content[:10000],  # Limit content size
+        }
+    except FileNotFoundError:
+        return {"error": f"File not found: {file_path}"}
+    except Exception as e:
+        return {"error": f"Failed to read file: {e}"}
+
+
+async def _handle_write_sandbox_file(sandbox_id: Optional[str], file_path: Optional[str], content: Optional[str]) -> dict:
+    """Write a file to an existing sandbox."""
+    if not sandbox_id:
+        return {"error": "sandbox_id is required"}
+    if not file_path:
+        return {"error": "file_path is required"}
+    if content is None:
+        return {"error": "file_content is required"}
+
+    from ..sandbox import sandbox_manager
+
+    sandbox = sandbox_manager.sandboxes.get(sandbox_id)
+    if not sandbox:
+        return {"error": f"Sandbox {sandbox_id} not found. It may have been destroyed or expired."}
+
+    try:
+        await sandbox_manager.write_file(sandbox_id, file_path, content)
+        return {
+            "success": True,
+            "sandbox_id": sandbox_id,
+            "file_path": file_path,
+            "message": f"File written: {file_path}",
+        }
+    except Exception as e:
+        return {"error": f"Failed to write file: {e}"}
+
+
+async def _handle_destroy_sandbox(sandbox_id: Optional[str], user_name: Optional[str]) -> dict:
+    """Destroy a sandbox - only the creator can confirm."""
+    if not sandbox_id:
+        return {"error": "sandbox_id is required"}
+
+    from ..sandbox import sandbox_manager
+
+    sandbox = sandbox_manager.sandboxes.get(sandbox_id)
+    if not sandbox:
+        return {"error": f"Sandbox {sandbox_id} not found. It may have already been destroyed."}
+
+    # Check if user is the creator
+    if sandbox.initiated_by and user_name:
+        if sandbox.initiated_by.lower() != user_name.lower():
+            return {
+                "error": f"Only {sandbox.initiated_by} can destroy this sandbox.",
+                "sandbox_id": sandbox_id,
+                "initiated_by": sandbox.initiated_by,
+            }
+
+    await sandbox_manager.destroy(sandbox_id, force=True)
+
+    return {
+        "success": True,
+        "sandbox_id": sandbox_id,
+        "message": f"Sandbox {sandbox_id} has been destroyed.",
     }
 
 
@@ -351,12 +474,13 @@ async def _handle_interactive_task(
     import uuid
     task_id = str(uuid.uuid4())[:8]
 
-    # Create progress reporter
+    # Create progress reporter - silent by default, AI handles all messaging
     reporter = DiscordProgressReporter(
         channel=channel,
         bot=bot,
         user_id=user_id,
         user_name=user_name,
+        notification_mode="silent",  # AI in control - no auto messages
     )
 
     # Register for reply routing
@@ -380,24 +504,14 @@ async def _handle_interactive_task(
     }
 
     try:
-        # Start task in Discord
-        await reporter.start_task(task, repo, task_id)
+        # Don't send initial message - AI will communicate results
 
-        # Define progress callback
+        # Define progress callback - just track internally, no Discord messages
         async def on_progress(phase: str, message: str, detail: Optional[str] = None):
-            """Called by agent on progress updates."""
+            """Called by agent on progress updates - tracks internally only."""
             _running_tasks[task_id]["phase"] = phase
             _running_tasks[task_id]["messages"].append(message)
-
-            # Update Discord
-            await reporter.update_phase(phase, detail)
-
-            # Send detail as separate message for important phases
-            if detail and phase in ("planning", "coding", "failed"):
-                # Truncate if needed
-                if len(detail) > 1800:
-                    detail = detail[:1800] + "\n\n*[truncated...]*"
-                await reporter.send_detail(f"```\n{detail}\n```")
+            # No Discord messages - AI will handle all communication
 
         # Define approval callback for human review
         async def on_approval_needed(phase: str, content: str) -> tuple[str, str]:
@@ -436,16 +550,15 @@ async def _handle_interactive_task(
         _running_tasks[task_id]["phase"] = result.phase.value
         _running_tasks[task_id]["messages"] = result.messages
 
-        # Send completion message
-        summary = _format_result_summary(result)
-        await reporter.complete(result.success, summary)
+        # Don't send completion message here - let AI handle the response
+        # The tool result goes back to AI which decides how to respond to user
 
         return _format_result(result, task_id)
 
     except Exception as e:
         _running_tasks[task_id]["phase"] = "failed"
         _running_tasks[task_id]["messages"].append(f"Error: {e}")
-        await reporter.complete(False, f"Error: {e}")
+        # Return error to AI - let AI explain it to user naturally
         return {"error": str(e), "task_id": task_id}
 
     finally:
@@ -505,41 +618,30 @@ async def _github_api(method: str, endpoint: str, data: dict = None) -> tuple[in
 
 
 async def _handle_list_branches(repo: str) -> dict:
-    """List all branches in a repository using GraphQL (faster + richer data)."""
-    from ...github_graphql import github_graphql
+    """List all branches in a repository using REST API."""
+    # Get default branch first
+    status, repo_data = await _github_api("GET", f"/repos/{repo}")
+    default_branch = repo_data.get("default_branch", "main") if status == 200 else "main"
 
-    # Temporarily switch repo context if needed
-    original_owner, original_repo = github_graphql.owner, github_graphql.repo
-    parts = repo.split("/")
-    if len(parts) == 2:
-        github_graphql.owner, github_graphql.repo = parts[0], parts[1]
+    # List branches
+    status, branches = await _github_api("GET", f"/repos/{repo}/branches?per_page=100")
+    if status != 200:
+        return {"error": f"Failed to list branches: {branches.get('message', status)}"}
 
-    try:
-        data = await github_graphql._fetch_branches(limit=100)
+    branch_list = [b["name"] for b in branches]
 
-        if data.get("error"):
-            return {"error": f"Failed to list branches: {data['error']}"}
+    # Format with default branch indicator
+    lines = []
+    for b in branches[:20]:
+        marker = " (default)" if b["name"] == default_branch else ""
+        lines.append(f"- {b['name']}{marker}")
 
-        branches = data.get("items", [])
-        default_branch = data.get("default", "main")
-        branch_list = [b["name"] for b in branches]
-
-        # Format with default branch indicator
-        lines = []
-        for b in branches[:20]:
-            marker = " (default)" if b.get("is_default") else ""
-            date = b.get("last_commit", "")
-            lines.append(f"- {b['name']}{marker} ({date})")
-
-        return {
-            "success": True,
-            "branches": branch_list,
-            "default_branch": default_branch,
-            "message": f"**Branches in {repo}:**\n" + "\n".join(lines)
-        }
-    finally:
-        # Restore original context
-        github_graphql.owner, github_graphql.repo = original_owner, original_repo
+    return {
+        "success": True,
+        "branches": branch_list,
+        "default_branch": default_branch,
+        "message": f"**Branches in {repo}:**\n" + "\n".join(lines)
+    }
 
 
 async def _handle_create_branch(repo: str, base_branch: str, new_branch: Optional[str]) -> dict:
@@ -786,66 +888,25 @@ async def _cleanup_task(task_id: str, delay: int):
 
 
 def _format_result(result: AgentResult, task_id: str) -> dict:
-    """Format agent result for Discord display."""
-    if result.success:
-        # Success message
-        msg_parts = [
-            f"✅ **Task Completed Successfully!**",
-            f"",
-            f"**Task:** {result.task}",
-            f"**Repository:** {result.repo} ({result.branch})",
-            f"**Duration:** {result.duration:.1f}s",
-        ]
-
-        if result.changes:
-            changes_list = [f"  - {c['file']}" for c in result.changes if c.get('success')]
-            if changes_list:
-                msg_parts.append(f"")
-                msg_parts.append(f"**Files Changed:**")
-                msg_parts.extend(changes_list[:10])
-                if len(changes_list) > 10:
-                    msg_parts.append(f"  ... and {len(changes_list) - 10} more")
-
-        if result.commit_sha:
-            msg_parts.append(f"")
-            msg_parts.append(f"**Commit:** `{result.commit_sha}`")
-
-        if result.pr_url:
-            msg_parts.append(f"**Pull Request:** [View PR](<{result.pr_url}>)")
-
-        return {
-            "success": True,
-            "task_id": task_id,
-            "message": "\n".join(msg_parts),
-            "commit_sha": result.commit_sha,
-            "pr_url": result.pr_url,
-            "changes": result.changes,
-            "duration": result.duration,
-        }
-
-    else:
-        # Failure message
-        msg_parts = [
-            f"❌ **Task Failed**",
-            f"",
-            f"**Task:** {result.task}",
-            f"**Phase:** {result.phase.value}",
-            f"**Error:** {result.error or 'Unknown error'}",
-        ]
-
-        if result.messages:
-            msg_parts.append(f"")
-            msg_parts.append(f"**Progress Log:**")
-            for msg in result.messages[-5:]:
-                msg_parts.append(f"  {msg}")
-
-        return {
-            "success": False,
-            "task_id": task_id,
-            "error": result.error,
-            "phase": result.phase.value,
-            "message": "\n".join(msg_parts),
-        }
+    """Format agent result - AI will use this to respond to user."""
+    # Return raw data - let AI format the response naturally
+    return {
+        "success": result.success,
+        "task_id": task_id,
+        "sandbox_id": result.sandbox_id,  # Sandbox persists - AI should ask user about next steps
+        "task": result.task,
+        "repo": result.repo,
+        "branch": result.branch,
+        "phase": result.phase.value,
+        "duration": result.duration,
+        "changes": result.changes,
+        "commit_sha": result.commit_sha,
+        "pr_url": result.pr_url,
+        "error": result.error,
+        "messages": result.messages[-5:] if result.messages else [],
+        # Hint for AI - sandbox is alive, ask user what to do next
+        "_ai_hint": "Sandbox is still running. Ask user: want to create a branch/PR, make more changes, or destroy the sandbox?"
+    }
 
 
 # Export tool handler

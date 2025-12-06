@@ -155,14 +155,15 @@ class SandboxManager:
         else:
             await self._create_local_sandbox(sandbox)
 
+        # Add to sandboxes BEFORE clone so execute() can find it
+        self.sandboxes[sandbox_id] = sandbox
+
         # Clone repo if provided
         if repo_url:
             await self._clone_repo(sandbox, repo_url, branch)
 
         # Create session embeddings for this sandbox
         await session_embeddings_manager.create_session(sandbox_id)
-
-        self.sandboxes[sandbox_id] = sandbox
         logger.info(f"Created sandbox {sandbox_id} for {repo_url or 'empty'} (by {initiated_by})")
 
         return sandbox
