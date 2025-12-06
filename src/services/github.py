@@ -24,6 +24,7 @@ class GitHubManager:
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
+        self._session_lock = asyncio.Lock()  # Prevent race condition in session creation
 
     @property
     def repo(self) -> str:
@@ -32,20 +33,27 @@ class GitHubManager:
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session with connection pooling."""
-        if self._session is None or self._session.closed:
-            # Connection pooling for faster subsequent requests
-            self._connector = aiohttp.TCPConnector(
-                limit=50,  # Max total connections
-                limit_per_host=30,  # Max per host (GitHub)
-                keepalive_timeout=60,  # Keep connections alive longer
-                enable_cleanup_closed=True,
-                ttl_dns_cache=300,  # Cache DNS for 5 mins
-                use_dns_cache=True
-            )
-            self._session = aiohttp.ClientSession(
-                connector=self._connector,
-                timeout=aiohttp.ClientTimeout(total=60, connect=10)
-            )
+        # Fast path: return existing session without lock
+        if self._session is not None and not self._session.closed:
+            return self._session
+
+        # Slow path: acquire lock and create session
+        async with self._session_lock:
+            # Double-check after acquiring lock
+            if self._session is None or self._session.closed:
+                # Connection pooling for faster subsequent requests
+                self._connector = aiohttp.TCPConnector(
+                    limit=50,  # Max total connections
+                    limit_per_host=30,  # Max per host (GitHub)
+                    keepalive_timeout=60,  # Keep connections alive longer
+                    enable_cleanup_closed=True,
+                    ttl_dns_cache=300,  # Cache DNS for 5 mins
+                    use_dns_cache=True
+                )
+                self._session = aiohttp.ClientSession(
+                    connector=self._connector,
+                    timeout=aiohttp.ClientTimeout(total=60, connect=10)
+                )
         return self._session
 
     async def close(self):

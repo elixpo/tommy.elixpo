@@ -59,6 +59,7 @@ class GitHubGraphQL:
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
+        self._session_lock = asyncio.Lock()  # Prevent race condition in session creation
         self._cache = TTLCache(ttl=CACHE_TTL)  # 5 min cache for labels/milestones
 
     @property
@@ -73,19 +74,26 @@ class GitHubGraphQL:
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session with connection pooling."""
-        if self._session is None or self._session.closed:
-            self._connector = aiohttp.TCPConnector(
-                limit=50,
-                limit_per_host=30,
-                keepalive_timeout=60,
-                enable_cleanup_closed=True,
-                ttl_dns_cache=300,
-                use_dns_cache=True
-            )
-            self._session = aiohttp.ClientSession(
-                connector=self._connector,
-                timeout=aiohttp.ClientTimeout(total=30, connect=10)
-            )
+        # Fast path: return existing session without lock
+        if self._session is not None and not self._session.closed:
+            return self._session
+
+        # Slow path: acquire lock and create session
+        async with self._session_lock:
+            # Double-check after acquiring lock
+            if self._session is None or self._session.closed:
+                self._connector = aiohttp.TCPConnector(
+                    limit=50,
+                    limit_per_host=30,
+                    keepalive_timeout=60,
+                    enable_cleanup_closed=True,
+                    ttl_dns_cache=300,
+                    use_dns_cache=True
+                )
+                self._session = aiohttp.ClientSession(
+                    connector=self._connector,
+                    timeout=aiohttp.ClientTimeout(total=30, connect=10)
+                )
         return self._session
 
     async def close(self):
@@ -1000,10 +1008,12 @@ class GitHubGraphQL:
             if status and item_status != status:
                 continue
 
+            # Detect type: Issues have labels field in our query, PRs don't
+            is_issue = "labels" in content
             items.append({
                 "number": content["number"],
                 "title": content["title"],
-                "type": "issue" if "Issue" in str(type(content)) else "pr",
+                "type": "issue" if is_issue else "pr",
                 "state": content["state"].lower(),
                 "url": content["url"],
                 "status": item_status,

@@ -14,6 +14,8 @@ This is as close to "human developer" as we can get.
 import asyncio
 import json
 import logging
+import shlex
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Awaitable
 from datetime import datetime
@@ -581,13 +583,17 @@ Task: {task}"""
                 pattern = tool_args.get("pattern", "")
                 file_pattern = tool_args.get("file_pattern", "")
 
-                cmd = f"grep -rn '{pattern}' ."
+                # Sanitize inputs to prevent command injection
+                safe_pattern = shlex.quote(pattern)
+                cmd = f"grep -rn {safe_pattern} ."
                 if file_pattern:
-                    cmd = f"find . -name '{file_pattern}' -exec grep -l '{pattern}' {{}} \\;"
+                    safe_file_pattern = shlex.quote(file_pattern)
+                    cmd = f"find . -name {safe_file_pattern} -exec grep -l {safe_pattern} {{}} \\;"
 
                 result = await self.sandboxes.execute(sandbox.id, cmd, timeout=30)
+                # grep returns exit code 1 for "no matches" which is not an error
                 return {
-                    "success": result.exit_code == 0,
+                    "success": result.exit_code in (0, 1),
                     "matches": result.stdout[:5000] if result.stdout else "No matches found",
                 }
 
@@ -629,8 +635,10 @@ Task: {task}"""
             # === Git operations ===
             elif tool_name == "commit":
                 message = tool_args.get("message", "Automated commit")
+                # Sanitize commit message to prevent injection
+                safe_message = shlex.quote(message)
                 await self.sandboxes.execute(sandbox.id, "git add -A")
-                result = await self.sandboxes.execute(sandbox.id, f'git commit -m "{message}"')
+                result = await self.sandboxes.execute(sandbox.id, f"git commit -m {safe_message}")
 
                 if result.exit_code == 0:
                     sha_result = await self.sandboxes.execute(sandbox.id, "git rev-parse HEAD")
@@ -641,7 +649,10 @@ Task: {task}"""
 
             elif tool_name == "create_branch":
                 branch_name = tool_args.get("branch_name", "")
-                result = await self.sandboxes.execute(sandbox.id, f"git checkout -b {branch_name}")
+                # Validate branch name (alphanumeric, dash, underscore, slash only)
+                if not re.match(r'^[\w\-/]+$', branch_name):
+                    return {"success": False, "error": "Invalid branch name - use only alphanumeric, dash, underscore, slash"}
+                result = await self.sandboxes.execute(sandbox.id, f"git checkout -b {shlex.quote(branch_name)}")
                 return {
                     "success": result.exit_code == 0,
                     "message": f"Created branch {branch_name}" if result.exit_code == 0 else result.stderr,
@@ -652,19 +663,30 @@ Task: {task}"""
                 body = tool_args.get("body", "")
                 base = tool_args.get("base", "main")
 
+                # Validate base branch name
+                if not re.match(r'^[\w\-/]+$', base):
+                    return {"success": False, "error": "Invalid base branch name"}
+
                 # Push current branch first
                 branch_result = await self.sandboxes.execute(sandbox.id, "git rev-parse --abbrev-ref HEAD")
                 current_branch = branch_result.stdout.strip()
 
+                # Validate current branch
+                if not re.match(r'^[\w\-/]+$', current_branch):
+                    return {"success": False, "error": "Invalid current branch name"}
+
                 push_result = await self.sandboxes.execute(
-                    sandbox.id, f"git push -u origin {current_branch}", timeout=60
+                    sandbox.id, f"git push -u origin {shlex.quote(current_branch)}", timeout=60
                 )
 
                 if push_result.exit_code != 0:
                     return {"success": False, "error": f"Push failed: {push_result.stderr}"}
 
-                # Create PR using gh cli
-                pr_cmd = f'gh pr create --title "{title}" --body "{body}" --base {base}'
+                # Create PR using gh cli with sanitized inputs
+                safe_title = shlex.quote(title)
+                safe_body = shlex.quote(body)
+                safe_base = shlex.quote(base)
+                pr_cmd = f"gh pr create --title {safe_title} --body {safe_body} --base {safe_base}"
                 pr_result = await self.sandboxes.execute(sandbox.id, pr_cmd, timeout=30)
 
                 if pr_result.exit_code == 0:

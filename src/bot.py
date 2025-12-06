@@ -310,7 +310,7 @@ async def on_message(message: discord.Message):
         # If no text but replying or has images, let AI handle it
         if not text and not image_urls:
             text = "[User mentioned bot without text - greet them or ask how you can help]"
-        if not text and image_urls:
+        elif not text and image_urls:
             text = "[User attached screenshot(s)]"
 
         # Create session if needed (handles bot restart scenario)
@@ -352,7 +352,7 @@ async def on_message(message: discord.Message):
     # If no text but replying or has images, let AI handle it
     if not text and not image_urls:
         text = "[User mentioned bot without text - greet them or ask how you can help]"
-    if not text and image_urls:
+    elif not text and image_urls:
         text = "[User attached screenshot(s)]"
 
     # Check if message already has a thread - if so, respond there instead of creating new

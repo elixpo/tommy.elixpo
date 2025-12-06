@@ -62,25 +62,33 @@ class PollinationsClient:
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
+        self._session_lock = asyncio.Lock()  # Prevent race condition in session creation
         self._cache = ResponseCache(ttl=60)  # 60 second cache
         self._tool_handlers: dict[str, callable] = {}
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session with connection pooling."""
-        if self._session is None or self._session.closed:
-            # Connection pooling for faster subsequent requests
-            self._connector = aiohttp.TCPConnector(
-                limit=50,  # Max connections (increased)
-                limit_per_host=20,  # Max per host (increased)
-                keepalive_timeout=60,  # Keep connections alive longer
-                enable_cleanup_closed=True,
-                ttl_dns_cache=300,  # Cache DNS for 5 mins
-                use_dns_cache=True
-            )
-            self._session = aiohttp.ClientSession(
-                connector=self._connector,
-                timeout=aiohttp.ClientTimeout(total=120, connect=10)
-            )
+        # Fast path: return existing session without lock
+        if self._session is not None and not self._session.closed:
+            return self._session
+
+        # Slow path: acquire lock and create session
+        async with self._session_lock:
+            # Double-check after acquiring lock
+            if self._session is None or self._session.closed:
+                # Connection pooling for faster subsequent requests
+                self._connector = aiohttp.TCPConnector(
+                    limit=50,  # Max connections (increased)
+                    limit_per_host=20,  # Max per host (increased)
+                    keepalive_timeout=60,  # Keep connections alive longer
+                    enable_cleanup_closed=True,
+                    ttl_dns_cache=300,  # Cache DNS for 5 mins
+                    use_dns_cache=True
+                )
+                self._session = aiohttp.ClientSession(
+                    connector=self._connector,
+                    timeout=aiohttp.ClientTimeout(total=120, connect=10)
+                )
         return self._session
 
     async def close(self):
@@ -144,7 +152,10 @@ class PollinationsClient:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data["choices"][0]["message"].get("content", "")
+                    choices = data.get("choices", [])
+                    if choices:
+                        return choices[0].get("message", {}).get("content", "")
+                    return ""
                 else:
                     error_text = await response.text()
                     logger.error(f"generate_text error: HTTP {response.status}: {error_text[:200]}")
@@ -324,6 +335,9 @@ class PollinationsClient:
 
         async def execute_single(tool_call: dict) -> dict:
             func_name = tool_call["function"]["name"]
+            # Strip any namespace prefix (e.g., "default_api:github_code" -> "github_code")
+            if ":" in func_name:
+                func_name = func_name.split(":")[-1]
             try:
                 args = json.loads(tool_call["function"]["arguments"])
             except json.JSONDecodeError:
@@ -421,7 +435,10 @@ class PollinationsClient:
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
-                        message = data["choices"][0]["message"]
+                        choices = data.get("choices", [])
+                        if not choices:
+                            return {"content": "", "tool_calls": []}
+                        message = choices[0].get("message", {})
                         return {
                             "content": message.get("content", ""),
                             "tool_calls": message.get("tool_calls", [])
@@ -705,7 +722,8 @@ async def web_search_handler(query: str, mode: str = "fast", **kwargs) -> dict:
         ) as response:
             if response.status == 200:
                 data = await response.json()
-                content = data["choices"][0]["message"].get("content", "")
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
                 return {
                     "result": content,
                     "model": model,
