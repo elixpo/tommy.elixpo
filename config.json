@@ -1,0 +1,28 @@
+{
+  "bot": {
+    "name": "Polly",
+    "default_repo": "pollinations/pollinations"
+  },
+  "discord": {
+    "admin_role_ids": [911279121307414558]
+  },
+  "github": {
+    "bot_username": "polly-bot-pollinations-ai",
+    "admin_users": ["voodoohop", "Itachi-1824", "eulervoid", "ElliotEtag"],
+    "whitelisted_repos": ["pollinations/pollinations"],
+    "admin_only_mentions": true
+  },
+  "webhook": {
+    "port": 8002,
+    "enabled": true
+  },
+  "ai": {
+    "model": "gemini-large",
+    "fallback_model": "openai"
+  },
+  "features": {
+    "sandbox_enabled": true,
+    "local_embeddings_enabled": true,
+    "embeddings_repo": "pollinations/pollinations"
+  }
+}

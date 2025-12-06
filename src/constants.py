@@ -926,12 +926,30 @@ GOOD (fast - 1 round trip):
 **Discord:** Concise, no fluff, bullet points, match user's energy
 **GitHub issues:** Clear title, structured body (Problem → Steps → Expected → Actual)
 
-## Link Formatting (CRITICAL - NO EXCEPTIONS):
-ALL URLs MUST be wrapped in `<>` to prevent Discord preview spam!
-- Format: `[text](<url>)` - angle brackets are MANDATORY
-- Good: `[#156](<https://github.com/...>)`, `[Dev](<https://github.com/orgs/.../projects/20>)`
-- Bad: `[#156](url)` without `<>`, bare URLs, plain `#156`
-- Lists: `• ✅ [#123](<url>) Title` (✅ closed, ⬜ open)
+## Link Formatting (CRITICAL - ALWAYS INCLUDE LINKS):
+EVERY reference to a GitHub resource MUST include a clickable link for quick access!
+Users need links to verify info, take action, or navigate quickly - never make them search.
+
+**Format:** `[visible text](<url>)` - angle brackets suppress Discord previews
+
+**Always link these:**
+- Issues/PRs: `[#123](<https://github.com/owner/repo/issues/123>)` or `[#123](<https://github.com/owner/repo/pull/123>)`
+- Users: `[@username](<https://github.com/username>)`
+- Files: `[filename.py](<https://github.com/owner/repo/blob/main/path/filename.py>)`
+- Commits: `[abc1234](<https://github.com/owner/repo/commit/abc1234>)`
+- Branches: `[branch-name](<https://github.com/owner/repo/tree/branch-name>)`
+- Projects: `[Project Name](<https://github.com/orgs/owner/projects/1>)`
+- Workflows/Actions: `[workflow](<https://github.com/owner/repo/actions/runs/123>)`
+
+**Examples:**
+- Single: `Created [#456](<https://...>) - Add dark mode`
+- List: `• [#123](<url>) Fix login bug` / `• [#124](<url>) Add tests`
+- PR by user: `[#789](<url>) by [@alice](<https://github.com/alice>)`
+
+**Bad (never do this):**
+- `#123` without link - user can't click it
+- `https://github.com/...` bare URL - creates embed spam
+- `[#123](url)` without `<>` - creates embed spam
 
 ## Multilingual:
 Offer to chat in user's language, but GitHub content MUST be in English.

@@ -170,6 +170,9 @@ class CodeAgent:
         on_progress: Optional[ProgressCallback] = None,
         on_approval_needed: Optional[ApprovalCallback] = None,
         use_human_review: bool = False,  # Use human instead of Kimi K2
+        # User tracking for sandbox ownership
+        initiated_by: Optional[str] = None,
+        initiated_source: Optional[str] = None,  # "discord" or "github"
     ) -> AgentResult:
         """
         Run the full coding agent workflow.
@@ -185,6 +188,8 @@ class CodeAgent:
             on_progress: Callback for progress updates (phase, message, detail)
             on_approval_needed: Callback for human approval (phase, content) -> (decision, feedback)
             use_human_review: If True, use on_approval_needed instead of Kimi K2
+            initiated_by: Username of who started this task (for sandbox ownership)
+            initiated_source: Source platform ("discord" or "github")
 
         Returns:
             AgentResult with success status and details
@@ -246,6 +251,8 @@ class CodeAgent:
             sandbox = await self.sandboxes.create(
                 repo_url=f"https://github.com/{repo}.git",
                 branch=branch,
+                initiated_by=initiated_by,
+                initiated_source=initiated_source,
             )
             state.sandbox_id = sandbox.id
             self.editor.workspace_root = sandbox.workspace_path
@@ -513,16 +520,54 @@ Revise your plan to address the reviewer's concerns. Keep what was good, fix wha
                 state.add_message(f"Failed to edit {filename}: {result.error}")
 
     async def _get_relevant_files(self, state: AgentState) -> str:
-        """Get content of files likely relevant to the task."""
+        """
+        Get content of files likely relevant to the task.
+
+        Uses session embeddings (+ global) for semantic search,
+        falling back to file listing if embeddings unavailable.
+        """
         sandbox = self.sandboxes.sandboxes.get(state.sandbox_id)
         if not sandbox:
             return ""
 
-        # Find Python files
+        content = ""
+        seen_files = set()
+
+        # Try semantic search first using session + global embeddings
+        try:
+            search_results = await self.sandboxes.search_code(
+                state.sandbox_id,
+                query=state.task,  # Use task description as search query
+                top_k=10,
+                include_global=True,
+            )
+
+            for result in search_results:
+                file_path = result["file_path"]
+                if file_path in seen_files:
+                    continue
+                seen_files.add(file_path)
+
+                try:
+                    file_content = await self.sandboxes.read_file(state.sandbox_id, file_path)
+                    source_tag = f" [{result.get('source', 'unknown')}]" if result.get('source') else ""
+                    content += f"\n### {file_path}{source_tag} (similarity: {result['similarity']})\n```\n{file_content[:3000]}\n```\n"
+                except Exception:
+                    pass
+
+            if content:
+                state.add_message(f"Found {len(seen_files)} relevant files via semantic search")
+                return content
+
+        except Exception as e:
+            logger.debug(f"Semantic search failed, falling back to file listing: {e}")
+
+        # Fallback: Find Python files by listing
         files = await self.sandboxes.list_files(state.sandbox_id, ".", "*.py")
 
-        content = ""
         for f in files[:10]:  # Limit to 10 files
+            if f in seen_files:
+                continue
             try:
                 file_content = await self.sandboxes.read_file(state.sandbox_id, f)
                 content += f"\n### {f}\n```python\n{file_content[:3000]}\n```\n"

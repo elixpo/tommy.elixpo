@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime, timedelta
 
+from .session_embeddings import session_embeddings_manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +56,13 @@ class Sandbox:
     created_at: datetime = field(default_factory=datetime.utcnow)
     config: SandboxConfig = field(default_factory=SandboxConfig)
     _process: Optional[asyncio.subprocess.Process] = None
+
+    # User who initiated the sandbox (for destruction confirmation)
+    initiated_by: Optional[str] = None
+    initiated_source: Optional[str] = None  # "discord" or "github"
+
+    # Pending destruction confirmation
+    pending_destruction: bool = False
 
 
 class SandboxManager:
@@ -111,6 +120,8 @@ class SandboxManager:
         repo_url: Optional[str] = None,
         branch: str = "main",
         config: Optional[SandboxConfig] = None,
+        initiated_by: Optional[str] = None,
+        initiated_source: Optional[str] = None,
     ) -> Sandbox:
         """
         Create a new sandbox.
@@ -119,6 +130,8 @@ class SandboxManager:
             repo_url: Git repository URL to clone (optional)
             branch: Branch to checkout
             config: Sandbox configuration
+            initiated_by: Username of who started this sandbox
+            initiated_source: Source platform ("discord" or "github")
 
         Returns:
             Sandbox instance
@@ -133,6 +146,8 @@ class SandboxManager:
             repo_url=repo_url,
             branch=branch,
             config=config or SandboxConfig(),
+            initiated_by=initiated_by,
+            initiated_source=initiated_source,
         )
 
         if self.use_docker:
@@ -144,8 +159,11 @@ class SandboxManager:
         if repo_url:
             await self._clone_repo(sandbox, repo_url, branch)
 
+        # Create session embeddings for this sandbox
+        await session_embeddings_manager.create_session(sandbox_id)
+
         self.sandboxes[sandbox_id] = sandbox
-        logger.info(f"Created sandbox {sandbox_id} for {repo_url or 'empty'}")
+        logger.info(f"Created sandbox {sandbox_id} for {repo_url or 'empty'} (by {initiated_by})")
 
         return sandbox
 
@@ -368,6 +386,8 @@ class SandboxManager:
 
         If the file doesn't exist in sandbox but exists in local repo,
         the directory structure is auto-copied to preserve git context.
+
+        Also automatically indexes the file in session embeddings.
         """
         sandbox = self.sandboxes.get(sandbox_id)
         if not sandbox:
@@ -381,6 +401,15 @@ class SandboxManager:
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content)
+
+        # Index in session embeddings (async, non-blocking)
+        # Only index code files
+        code_extensions = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+        if Path(path).suffix.lower() in code_extensions:
+            try:
+                await session_embeddings_manager.index_file(sandbox_id, path, content)
+            except Exception as e:
+                logger.warning(f"Failed to index {path} in session embeddings: {e}")
 
     async def _ensure_file_context(self, sandbox: Sandbox, path: str):
         """
@@ -441,11 +470,25 @@ class SandboxManager:
 
         return sorted(files)[:100]  # Limit to 100 files
 
-    async def destroy(self, sandbox_id: str):
-        """Destroy a sandbox and clean up resources."""
-        sandbox = self.sandboxes.pop(sandbox_id, None)
+    async def destroy(self, sandbox_id: str, force: bool = False):
+        """
+        Destroy a sandbox and clean up resources.
+
+        Args:
+            sandbox_id: ID of sandbox to destroy
+            force: If True, skip confirmation check
+        """
+        sandbox = self.sandboxes.get(sandbox_id)
         if not sandbox:
             return
+
+        # Check if pending confirmation (unless forced)
+        if sandbox.pending_destruction and not force:
+            logger.info(f"Sandbox {sandbox_id} already pending destruction confirmation")
+            return
+
+        # Remove from tracking
+        self.sandboxes.pop(sandbox_id, None)
 
         if self.use_docker and sandbox.container_id:
             # Stop and remove container
@@ -456,7 +499,64 @@ class SandboxManager:
         if sandbox.workspace_path.exists():
             shutil.rmtree(sandbox.workspace_path, ignore_errors=True)
 
+        # Clean up session embeddings
+        await session_embeddings_manager.destroy_session(sandbox_id)
+
         logger.info(f"Destroyed sandbox {sandbox_id}")
+
+    async def request_destruction(self, sandbox_id: str) -> dict:
+        """
+        Request sandbox destruction (pending user confirmation).
+
+        Returns sandbox info for confirmation message.
+        """
+        sandbox = self.sandboxes.get(sandbox_id)
+        if not sandbox:
+            return {"error": "Sandbox not found"}
+
+        sandbox.pending_destruction = True
+
+        # Get session stats for user info
+        session = session_embeddings_manager.get_session(sandbox_id)
+        session_stats = session.get_stats() if session else {}
+
+        return {
+            "sandbox_id": sandbox_id,
+            "initiated_by": sandbox.initiated_by,
+            "initiated_source": sandbox.initiated_source,
+            "created_at": sandbox.created_at.isoformat(),
+            "repo_url": sandbox.repo_url,
+            "files_modified": session_stats.get("files_indexed", 0),
+            "chunks_indexed": session_stats.get("total_chunks", 0),
+        }
+
+    async def confirm_destruction(self, sandbox_id: str, confirmed_by: str) -> bool:
+        """
+        Confirm sandbox destruction by authorized user.
+
+        Only the user who initiated the sandbox can confirm destruction.
+        """
+        sandbox = self.sandboxes.get(sandbox_id)
+        if not sandbox:
+            return False
+
+        # Check authorization
+        if sandbox.initiated_by and sandbox.initiated_by.lower() != confirmed_by.lower():
+            logger.warning(
+                f"Unauthorized destruction attempt: {confirmed_by} tried to destroy "
+                f"sandbox {sandbox_id} owned by {sandbox.initiated_by}"
+            )
+            return False
+
+        await self.destroy(sandbox_id, force=True)
+        return True
+
+    async def cancel_destruction(self, sandbox_id: str):
+        """Cancel pending sandbox destruction."""
+        sandbox = self.sandboxes.get(sandbox_id)
+        if sandbox:
+            sandbox.pending_destruction = False
+            logger.info(f"Cancelled destruction of sandbox {sandbox_id}")
 
     async def _periodic_cleanup(self):
         """Periodically clean up old sandboxes."""
@@ -481,6 +581,37 @@ class SandboxManager:
         """Get the workspace path for a sandbox."""
         sandbox = self.sandboxes.get(sandbox_id)
         return sandbox.workspace_path if sandbox else None
+
+    async def search_code(
+        self,
+        sandbox_id: str,
+        query: str,
+        top_k: int = 10,
+        include_global: bool = True,
+    ) -> list[dict]:
+        """
+        Search code using session embeddings (and optionally global).
+
+        Args:
+            sandbox_id: Sandbox ID
+            query: Search query
+            top_k: Number of results
+            include_global: Whether to also search global repo embeddings
+
+        Returns:
+            List of matching code chunks with file paths and similarity scores
+        """
+        if include_global:
+            return await session_embeddings_manager.search_combined(sandbox_id, query, top_k)
+        else:
+            return await session_embeddings_manager.search_session(sandbox_id, query, top_k)
+
+    def get_session_stats(self, sandbox_id: str) -> dict:
+        """Get session embedding stats for a sandbox."""
+        session = session_embeddings_manager.get_session(sandbox_id)
+        if session:
+            return session.get_stats()
+        return {"error": "No session found"}
 
 
 # Global sandbox manager instance

@@ -46,6 +46,8 @@ Interactive Mode (default):
 
 from .agent import CodeAgent, code_agent
 from .models import ModelRouter, model_router
+from .sandbox import SandboxManager, sandbox_manager, Sandbox
+from .session_embeddings import SessionEmbeddings, SessionEmbeddingsManager, session_embeddings_manager
 from .discord_progress import (
     DiscordProgressReporter,
     HumanFeedback,
@@ -96,6 +98,13 @@ __all__ = [
     "code_agent",
     "ModelRouter",
     "model_router",
+    # Sandbox & Session Embeddings
+    "SandboxManager",
+    "sandbox_manager",
+    "Sandbox",
+    "SessionEmbeddings",
+    "SessionEmbeddingsManager",
+    "session_embeddings_manager",
     # Discord integration
     "DiscordProgressReporter",
     "HumanFeedback",

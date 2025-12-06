@@ -5,28 +5,19 @@ Receives webhooks when @mentioned in GitHub issues/PRs/comments and:
 1. Processes the mention with AI (reusing bot's tool system)
 2. Posts response back to GitHub
 3. Optionally notifies Discord
-
-Port: 8002 (configurable via WEBHOOK_PORT env var)
 """
 
-import asyncio
 import hashlib
 import hmac
 import json
 import logging
-import os
 from typing import Optional
 
 from aiohttp import web
 
+from ..config import config
+
 logger = logging.getLogger(__name__)
-
-# Webhook configuration
-WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8002"))
-WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")  # For signature verification
-
-# Bot username to detect mentions (GitHub App or bot account)
-GITHUB_BOT_USERNAME = os.getenv("GITHUB_BOT_USERNAME", "pollinations-ci")
 
 
 class GitHubWebhookServer:
@@ -54,9 +45,9 @@ class GitHubWebhookServer:
         """Start the webhook server."""
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
-        self.site = web.TCPSite(self.runner, "0.0.0.0", WEBHOOK_PORT)
+        self.site = web.TCPSite(self.runner, "0.0.0.0", config.webhook_port)
         await self.site.start()
-        logger.info(f"GitHub webhook server started on port {WEBHOOK_PORT}")
+        logger.info(f"GitHub webhook server started on port {config.webhook_port}")
 
     async def stop(self):
         """Stop the webhook server."""
@@ -66,15 +57,17 @@ class GitHubWebhookServer:
 
     async def health_check(self, request: web.Request) -> web.Response:
         """Health check endpoint."""
-        return web.json_response({"status": "ok", "service": "polli-webhook"})
+        return web.json_response({"status": "ok", "service": "polly-webhook"})
 
     def verify_signature(self, payload: bytes, signature: str) -> bool:
-        """Verify GitHub webhook signature (if secret configured)."""
-        if not WEBHOOK_SECRET:
-            # No secret configured, skip verification (dev mode)
-            return True
+        """Verify GitHub webhook signature."""
+        if not config.webhook_secret:
+            # SECURITY: Reject all webhooks if no secret configured
+            logger.error("GITHUB_WEBHOOK_SECRET not configured - rejecting webhook for security")
+            return False
 
         if not signature:
+            logger.warning("Webhook received without signature header")
             return False
 
         # GitHub sends signature as "sha256=<hash>"
@@ -82,7 +75,7 @@ class GitHubWebhookServer:
             signature = signature[7:]
 
         expected = hmac.new(
-            WEBHOOK_SECRET.encode(),
+            config.webhook_secret.encode(),
             payload,
             hashlib.sha256
         ).hexdigest()
@@ -106,9 +99,15 @@ class GitHubWebhookServer:
         except json.JSONDecodeError:
             return web.json_response({"error": "Invalid JSON"}, status=400)
 
+        # Check repo whitelist
+        repo = data.get("repository", {}).get("full_name", "")
+        if not config.is_repo_whitelisted(repo):
+            logger.info(f"Ignoring webhook from non-whitelisted repo: {repo}")
+            return web.json_response({"status": "ignored", "reason": "repo not whitelisted"})
+
         # Get event type
         event_type = request.headers.get("X-GitHub-Event", "")
-        logger.info(f"Received webhook: {event_type}")
+        logger.info(f"Received webhook: {event_type} from {repo}")
 
         # Route to appropriate handler
         try:
@@ -135,15 +134,8 @@ class GitHubWebhookServer:
         """Check if bot is @mentioned in the body."""
         if not body:
             return False
-        mention = f"@{GITHUB_BOT_USERNAME}"
+        mention = f"@{config.github_bot_username}"
         return mention.lower() in body.lower()
-
-    def extract_mention_context(self, body: str) -> str:
-        """Extract the text around the @mention for context."""
-        if not body:
-            return ""
-        # Return full body - AI will understand the context
-        return body
 
     async def handle_issue_comment(self, data: dict):
         """Handle issue_comment event - someone commented on an issue/PR."""
@@ -159,7 +151,7 @@ class GitHubWebhookServer:
 
         # Don't respond to our own comments
         commenter = comment.get("user", {}).get("login", "")
-        if commenter.lower() == GITHUB_BOT_USERNAME.lower():
+        if commenter.lower() == config.github_bot_username.lower():
             return
 
         issue = data.get("issue", {})
@@ -175,7 +167,7 @@ class GitHubWebhookServer:
             "comment_id": comment.get("id"),
             "comment_body": body,
             "commenter": commenter,
-            "issue_body": issue.get("body", "")[:1000],  # Truncate for context
+            "issue_body": issue.get("body", "")[:1000],
         }
 
         await self.process_mention(context)
@@ -192,9 +184,8 @@ class GitHubWebhookServer:
         if not self.is_mentioned(body):
             return
 
-        # Don't respond to our own issues
         author = issue.get("user", {}).get("login", "")
-        if author.lower() == GITHUB_BOT_USERNAME.lower():
+        if author.lower() == config.github_bot_username.lower():
             return
 
         repo = data.get("repository", {})
@@ -225,7 +216,7 @@ class GitHubWebhookServer:
             return
 
         author = pr.get("user", {}).get("login", "")
-        if author.lower() == GITHUB_BOT_USERNAME.lower():
+        if author.lower() == config.github_bot_username.lower():
             return
 
         repo = data.get("repository", {})
@@ -258,7 +249,7 @@ class GitHubWebhookServer:
             return
 
         commenter = comment.get("user", {}).get("login", "")
-        if commenter.lower() == GITHUB_BOT_USERNAME.lower():
+        if commenter.lower() == config.github_bot_username.lower():
             return
 
         pr = data.get("pull_request", {})
@@ -293,7 +284,7 @@ class GitHubWebhookServer:
             return
 
         reviewer = review.get("user", {}).get("login", "")
-        if reviewer.lower() == GITHUB_BOT_USERNAME.lower():
+        if reviewer.lower() == config.github_bot_username.lower():
             return
 
         pr = data.get("pull_request", {})
@@ -307,7 +298,7 @@ class GitHubWebhookServer:
             "is_pr": True,
             "review_id": review.get("id"),
             "review_body": body,
-            "review_state": review.get("state"),  # approved, changes_requested, commented
+            "review_state": review.get("state"),
             "reviewer": reviewer,
         }
 
@@ -323,31 +314,37 @@ class GitHubWebhookServer:
         """
         logger.info(f"Processing GitHub mention: {context['type']} in {context.get('repo')}")
 
-        # Import here to avoid circular imports
         from .pollinations import pollinations_client
-        from .github import TOOL_HANDLERS
+
+        # Get the GitHub username
+        github_user = context.get("commenter") or context.get("author") or context.get("reviewer")
+
+        # Check if user is a GitHub admin
+        is_admin = config.is_github_admin(github_user)
+        logger.info(f"GitHub user @{github_user} is_admin={is_admin}")
+
+        # If admin_only_mentions is enabled, reject non-admin users
+        if config.github_admin_only_mentions and not is_admin:
+            logger.info(f"Rejecting mention from non-admin user @{github_user} (admin_only_mentions=true)")
+            error_msg = (
+                f"Sorry @{github_user}, I'm currently configured to only respond to authorized team members. "
+                "If you need assistance, please reach out to the maintainers or join our Discord."
+            )
+            await self._post_github_response(context, error_msg)
+            return
 
         # Build the user message from context
-        user_message = self._build_prompt(context)
+        user_message = self._build_prompt(context, is_admin)
 
-        # Get the text that triggered the mention
-        mention_text = (
-            context.get("comment_body") or
-            context.get("issue_body") or
-            context.get("pr_body") or
-            context.get("review_body") or
-            ""
-        )
-
-        # Process with AI (reuse the same tool system)
+        # Process with AI
         try:
             result = await pollinations_client.process_with_tools(
                 user_message=user_message,
-                discord_username=f"github:{context.get('commenter') or context.get('author') or context.get('reviewer')}",
+                discord_username=f"github:{github_user}",
                 thread_history=None,
                 image_urls=[],
-                is_admin=True,  # GitHub mentions treated as admin (repo collaborators)
-                source="github"  # Flag that this is from GitHub
+                is_admin=is_admin,
+                source="github"
             )
 
             response_text = result.get("response", "")
@@ -357,13 +354,13 @@ class GitHubWebhookServer:
 
         except Exception as e:
             logger.error(f"Error processing GitHub mention: {e}", exc_info=True)
-            # Post error response
-            error_msg = f"Sorry, I encountered an error processing your request. Please try again or ask in Discord."
+            error_msg = "Sorry, I encountered an error processing your request. Please try again or ask in Discord."
             await self._post_github_response(context, error_msg)
 
-    def _build_prompt(self, context: dict) -> str:
+    def _build_prompt(self, context: dict, is_admin: bool) -> str:
         """Build a prompt for the AI from the GitHub context."""
         ctx_type = context["type"]
+        admin_note = "" if is_admin else "\n\n**Note: This user does NOT have admin privileges. Read-only operations only.**"
 
         if ctx_type == "issue_comment":
             return f"""[GitHub Issue Comment]
@@ -377,7 +374,7 @@ Issue description:
 Comment from @{context['commenter']}:
 {context['comment_body']}
 
-Respond to their request. You can use tools to help. Keep response concise for GitHub."""
+Respond to their request. You can use tools to help. Keep response concise for GitHub.{admin_note}"""
 
         elif ctx_type == "issue_body":
             return f"""[GitHub Issue Mention]
@@ -388,7 +385,7 @@ Author: @{context['author']}
 Issue body:
 {context['issue_body']}
 
-The author mentioned you in this issue. Respond helpfully. You can use tools."""
+The author mentioned you in this issue. Respond helpfully. You can use tools.{admin_note}"""
 
         elif ctx_type == "pr_body":
             return f"""[GitHub PR Mention]
@@ -400,7 +397,7 @@ Branch: {context['head_branch']} → {context['base_branch']}
 PR description:
 {context['pr_body']}
 
-The author mentioned you in this PR. Respond helpfully. You can use tools like github_pr to review."""
+The author mentioned you in this PR. Respond helpfully. You can use tools like github_pr to review.{admin_note}"""
 
         elif ctx_type == "pr_review_comment":
             return f"""[GitHub PR Review Comment]
@@ -416,7 +413,7 @@ Code context:
 Comment from @{context['commenter']}:
 {context['comment_body']}
 
-Respond to their code question/request. Be concise."""
+Respond to their code question/request. Be concise.{admin_note}"""
 
         elif ctx_type == "pr_review":
             return f"""[GitHub PR Review]
@@ -427,15 +424,14 @@ Review by @{context['reviewer']} ({context['review_state']})
 Review comment:
 {context['review_body']}
 
-Respond to the reviewer's feedback."""
+Respond to the reviewer's feedback.{admin_note}"""
 
         else:
-            return f"[GitHub Mention]\n{json.dumps(context, indent=2)}"
+            return f"[GitHub Mention]\n{json.dumps(context, indent=2)}{admin_note}"
 
     async def _post_github_response(self, context: dict, response: str):
         """Post response back to GitHub."""
         from .github_auth import github_app_auth
-        from ..config import config
 
         repo = context.get("repo")
         if not repo:
@@ -450,7 +446,6 @@ Respond to the reviewer's feedback."""
                 "Accept": "application/vnd.github.v3+json"
             }
         else:
-            # Fallback to PAT
             headers = {
                 "Authorization": f"token {config.github_token}",
                 "Accept": "application/vnd.github.v3+json"
@@ -461,29 +456,23 @@ Respond to the reviewer's feedback."""
         ctx_type = context["type"]
 
         async with aiohttp.ClientSession() as session:
-            # Determine where to post the response
             if ctx_type in ("issue_comment", "issue_body"):
-                # Comment on issue
                 issue_number = context["issue_number"]
                 url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
 
             elif ctx_type in ("pr_body", "pr_review"):
-                # Comment on PR (uses issues API)
                 pr_number = context["pr_number"]
                 url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
 
             elif ctx_type == "pr_review_comment":
-                # Reply to review comment
                 comment_id = context["comment_id"]
                 pr_number = context["pr_number"]
-                # Use the review comments reply endpoint
                 url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/comments/{comment_id}/replies"
 
             else:
                 logger.warning(f"Unknown context type for response: {ctx_type}")
                 return
 
-            # Post the comment
             payload = {"body": response}
 
             async with session.post(url, headers=headers, json=payload) as resp:
@@ -493,27 +482,19 @@ Respond to the reviewer's feedback."""
                     error = await resp.text()
                     logger.error(f"Failed to post to GitHub ({resp.status}): {error}")
 
-    async def notify_discord(self, context: dict, response: str):
-        """
-        Optionally notify a Discord channel about the GitHub interaction.
-
-        This can be used to keep Discord users informed about GitHub activity.
-        """
-        if not self.discord_bot:
-            return
-
-        # TODO: Implement Discord notification if needed
-        # Could send to a specific channel like #github-activity
-        pass
-
 
 # Global instance
 webhook_server: Optional[GitHubWebhookServer] = None
 
 
 async def start_webhook_server(discord_bot=None):
-    """Start the webhook server."""
+    """Start the webhook server if enabled."""
     global webhook_server
+
+    if not config.webhook_enabled:
+        logger.info("Webhook server disabled in config")
+        return None
+
     webhook_server = GitHubWebhookServer(discord_bot)
     await webhook_server.start()
     return webhook_server
