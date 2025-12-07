@@ -201,6 +201,7 @@ async def tool_polly_agent(
                 branch=branch,
                 channel=discord_channel,
                 user_name=discord_user_name or "Unknown",
+                existing_task_id=task_id,  # Reuse existing branch if task_id provided
             )
 
         # Sandbox operations - work with existing sandbox
@@ -482,13 +483,14 @@ async def _handle_code_task(
     branch: str,
     channel: Optional[discord.TextChannel] = None,
     user_name: Optional[str] = None,
+    existing_task_id: Optional[str] = None,
 ) -> dict:
     """
     Handle coding task via ccr.
 
     This architecture:
     - Uses ClaudeCodeAgent which manages the persistent sandbox
-    - ClaudeCodeAgent creates task branch internally
+    - ClaudeCodeAgent creates task branch internally (or reuses existing)
     - Runs the task prompt via ccr
     - Returns results with sandbox still running for follow-ups
 
@@ -496,22 +498,43 @@ async def _handle_code_task(
     - Building task context
     - Summarizing output for Discord
     - Managing user interactions (pause, resume, etc.)
+
+    Args:
+        existing_task_id: If provided, continue on that task's branch instead of creating new
     """
     if not task:
         return {"error": "Task description is required"}
 
     import uuid
-    task_id = str(uuid.uuid4())[:8]
 
-    # Track the task
-    _running_tasks[task_id] = {
-        "task": task,
-        "repo": repo,
-        "branch": branch,
-        "phase": "coding",
-        "started_at": datetime.utcnow(),
-        "messages": [],
-    }
+    # Check if we should continue an existing task
+    reusing_branch = False
+    if existing_task_id and existing_task_id in _running_tasks:
+        task_id = existing_task_id
+        existing_branch = _running_tasks[task_id].get("branch_name")
+        if existing_branch:
+            branch = existing_branch
+            reusing_branch = True
+            logger.info(f"Continuing task {task_id} on existing branch {branch}")
+    else:
+        task_id = str(uuid.uuid4())[:8]
+
+    # Track the task (update if existing, create if new)
+    if task_id not in _running_tasks:
+        _running_tasks[task_id] = {
+            "task": task,
+            "repo": repo,
+            "branch": branch,
+            "phase": "coding",
+            "started_at": datetime.utcnow(),
+            "messages": [],
+            "user": user_name,
+        }
+    else:
+        # Update existing task with new task description
+        _running_tasks[task_id]["task"] = task
+        _running_tasks[task_id]["phase"] = "coding"
+        _running_tasks[task_id]["messages"].append(f"Continuing with: {task[:50]}...")
 
     # Create progress embed if Discord channel available
     embed_manager: Optional[ProgressEmbedManager] = None

@@ -218,6 +218,9 @@ class PersistentSandbox:
         await self.execute("su - coder -c \"git config --global user.name 'Polly Bot'\"")
         await self.execute("su - coder -c \"git config --global --add safe.directory '*'\"")
 
+        # Setup commit-msg hook to strip Claude Code attribution
+        await self._setup_commit_hook()
+
         # Write ccr config
         await self._write_ccr_config()
 
@@ -225,6 +228,63 @@ class PersistentSandbox:
         await self._ensure_ccr_running()
 
         logger.info("Initial setup complete")
+
+    async def _setup_commit_hook(self):
+        """
+        Setup a commit-msg hook to strip Claude Code attribution from commits.
+
+        Claude Code adds these lines to commit messages:
+        - 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+        - Co-Authored-By: Claude <noreply@anthropic.com>
+
+        We want commits to only show as "Polly Bot".
+        """
+        # Create a commit-msg hook script that strips Claude attribution
+        hook_script = '''#!/bin/bash
+# Strip Claude Code attribution from commit messages
+# Keep only the actual commit message, remove Claude branding
+
+COMMIT_MSG_FILE="$1"
+
+# Remove Claude Code attribution lines
+sed -i '/🤖 Generated with/d' "$COMMIT_MSG_FILE"
+sed -i '/Co-Authored-By: Claude/d' "$COMMIT_MSG_FILE"
+sed -i '/claude.com\\/claude-code/d' "$COMMIT_MSG_FILE"
+
+# Remove trailing empty lines
+sed -i -e :a -e '/^\\n*$/{$d;N;ba' -e '}' "$COMMIT_MSG_FILE"
+'''
+        # Write hook to sandbox
+        hook_path = SANDBOX_DIR / "commit-msg-hook"
+        hook_path.write_text(hook_script)
+
+        # Copy to container's git template
+        await self._run_host_command([
+            "docker", "cp",
+            str(hook_path),
+            f"{CONTAINER_NAME}:/tmp/commit-msg"
+        ])
+
+        # Setup as global git hook template
+        await self.execute("mkdir -p /home/coder/.git-templates/hooks")
+        await self.execute("cp /tmp/commit-msg /home/coder/.git-templates/hooks/commit-msg")
+        await self.execute("chmod +x /home/coder/.git-templates/hooks/commit-msg")
+        await self.execute("chown -R coder:coder /home/coder/.git-templates")
+
+        # Configure git to use this template
+        await self.execute("su - coder -c \"git config --global init.templateDir ~/.git-templates\"")
+
+        # Also copy directly to workspace repo if it exists
+        await self.execute(
+            "mkdir -p /workspace/pollinations/.git/hooks && "
+            "cp /tmp/commit-msg /workspace/pollinations/.git/hooks/commit-msg && "
+            "chmod +x /workspace/pollinations/.git/hooks/commit-msg 2>/dev/null || true"
+        )
+
+        # Cleanup
+        hook_path.unlink(missing_ok=True)
+
+        logger.info("Commit hook setup to strip Claude attribution")
 
     async def _write_ccr_config(self):
         """Write ccr configuration file."""
