@@ -600,6 +600,7 @@ sed -i -e :a -e '/^\\n*$/{$d;N;ba' -e '}' "$COMMIT_MSG_FILE"
             "APIKEY": "",
             "API_TIMEOUT_MS": "600000",  # 10 minutes
             "PROXY_URL": "",
+            "NON_INTERACTIVE_MODE": True,  # Required for piped stdin in persistent terminals
             "transformers": [],
             "Providers": [
                 {
