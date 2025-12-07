@@ -24,21 +24,75 @@ Available actions:
 """
 
 import asyncio
+import json
 import logging
 import os
+from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
 
 import discord
 
-from ..sandbox import sandbox_manager, Sandbox
+from ..sandbox import sandbox_manager, Sandbox, SANDBOX_DIR
 from ..claude_code_agent import get_claude_code_agent, ClaudeCodeResult, parse_todos_from_output, TodoItem
 from ..embed_builder import ProgressEmbedManager, StepStatus
 
 logger = logging.getLogger(__name__)
 
-# Store running tasks for status checks
+# Task persistence file
+TASKS_FILE = SANDBOX_DIR / "tasks.json"
+
+# Store running tasks for status checks (loaded from disk on import)
 _running_tasks: dict[str, dict] = {}
+
+
+def _save_tasks():
+    """Save tasks to disk for persistence across restarts."""
+    try:
+        # Only save serializable fields (no embed_manager, etc.)
+        serializable = {}
+        for task_id, task_data in _running_tasks.items():
+            serializable[task_id] = {
+                "task_id": task_id,
+                "task": task_data.get("task", ""),
+                "repo": task_data.get("repo", "pollinations/pollinations"),
+                "branch": task_data.get("branch", "main"),
+                "branch_name": task_data.get("branch_name"),
+                "phase": task_data.get("phase", "unknown"),
+                "started_at": task_data.get("started_at").isoformat() if isinstance(task_data.get("started_at"), datetime) else task_data.get("started_at"),
+                "files_changed": task_data.get("files_changed", []),
+                "user": task_data.get("user"),
+                "channel_id": task_data.get("channel_id"),
+            }
+
+        TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TASKS_FILE.write_text(json.dumps(serializable, indent=2))
+        logger.debug(f"Saved {len(serializable)} tasks to {TASKS_FILE}")
+    except Exception as e:
+        logger.warning(f"Failed to save tasks: {e}")
+
+
+def _load_tasks():
+    """Load tasks from disk on startup."""
+    global _running_tasks
+    try:
+        if TASKS_FILE.exists():
+            data = json.loads(TASKS_FILE.read_text())
+            for task_id, task_data in data.items():
+                # Convert ISO string back to datetime
+                if task_data.get("started_at"):
+                    try:
+                        task_data["started_at"] = datetime.fromisoformat(task_data["started_at"])
+                    except:
+                        task_data["started_at"] = datetime.utcnow()
+                _running_tasks[task_id] = task_data
+            logger.info(f"Loaded {len(_running_tasks)} tasks from {TASKS_FILE}")
+    except Exception as e:
+        logger.warning(f"Failed to load tasks: {e}")
+
+
+# Load tasks on module import
+_load_tasks()
 
 
 async def tool_polly_agent(
@@ -131,6 +185,10 @@ async def tool_polly_agent(
         if action == "status":
             return await _handle_status(task_id)
 
+        # List all tasks (useful after restart to see available tasks)
+        if action == "list_tasks":
+            return _handle_list_tasks()
+
         # List branches (uses GitHub API directly)
         if action == "list_branches":
             return await _handle_list_branches(repo)
@@ -181,12 +239,12 @@ async def tool_polly_agent(
             return await _handle_commit(repo, branch, commit_message)
 
         if action == "push":
-            return await _handle_push(repo, branch)
+            return await _handle_push(repo, branch, task_id)
 
         if action == "open_pr":
-            return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body)
+            return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body, task_id)
 
-        return {"error": f"Unknown action: {action}. Available: task, status, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
+        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
 
     except Exception as e:
         logger.exception("Error in polly_agent tool")
@@ -221,6 +279,55 @@ async def _handle_status(task_id: Optional[str]) -> dict:
         "phase": task_info["phase"],
         "elapsed_seconds": elapsed,
         "messages": task_info.get("messages", [])[-5:],  # Last 5 messages
+    }
+
+
+def _handle_list_tasks() -> dict:
+    """
+    List all persisted tasks.
+
+    Useful after bot restart to see what tasks exist and can be resumed.
+    Bot AI can use task_id from this list for push/open_pr operations.
+    """
+    if not _running_tasks:
+        return {
+            "message": "No tasks found. Start a new task with action='task'.",
+            "tasks": []
+        }
+
+    tasks_list = []
+    message_lines = ["**Available Tasks:**"]
+
+    for task_id, info in _running_tasks.items():
+        task_summary = {
+            "task_id": task_id,
+            "task": info.get("task", "")[:100],
+            "branch_name": info.get("branch_name"),
+            "phase": info.get("phase", "unknown"),
+            "files_changed": info.get("files_changed", []),
+            "user": info.get("user"),
+            "repo": info.get("repo", "pollinations/pollinations"),
+        }
+        tasks_list.append(task_summary)
+
+        # Format for display
+        branch = info.get("branch_name", "unknown")
+        phase = info.get("phase", "unknown")
+        files = len(info.get("files_changed", []))
+        message_lines.append(
+            f"- **{task_id}** ({phase}): {info.get('task', '')[:50]}...\n"
+            f"  Branch: `{branch}` | Files changed: {files}"
+        )
+
+    return {
+        "message": "\n".join(message_lines),
+        "tasks": tasks_list,
+        "_ai_hint": (
+            "Use task_id from this list for operations like:\n"
+            "- polly_agent(action='open_pr', task_id='...', pr_title='...')\n"
+            "- polly_agent(action='push', task_id='...')\n"
+            "- polly_agent(action='status', task_id='...')"
+        )
     }
 
 
@@ -513,12 +620,15 @@ async def _handle_code_task(
         # Update tracking
         _running_tasks[task_id]["phase"] = "complete" if result.success else "failed"
         _running_tasks[task_id]["messages"].append(f"Duration: {result.duration_seconds}s")
+        _running_tasks[task_id]["branch_name"] = result.branch_name
+        _running_tasks[task_id]["files_changed"] = result.files_changed
+        _running_tasks[task_id]["user"] = user_name
+
+        # Save to disk for persistence across restarts
+        _save_tasks()
 
         # Include todos in response
         todos_summary = [{"content": t.content, "status": t.status} for t in result.todos]
-
-        # Store task_id for sandbox operations
-        _running_tasks[task_id]["branch_name"] = result.branch_name
 
         # Return FULL ccr output - let bot AI read it and decide what to do
         # This enables dynamic conversation: AI can reply to ccr, ask user, or mark done
@@ -534,20 +644,26 @@ async def _handle_code_task(
             "duration": result.duration_seconds,
             "error": result.error,
             "_ai_hint": (
-                "IMPORTANT: Your response MUST be based on ccr_response above - this is what the coding agent ACTUALLY did. "
-                "DO NOT say 'I cannot access' - you just DID access the repo via this tool! "
-                "\n\nREAD ccr_response and respond accordingly:"
-                "\n- If success + files_changed: Summarize WHAT ccr did (from ccr_response), offer to create PR"
-                "\n- If ccr asks for info: provide it via another task call with more context"
-                "\n- If ccr has questions: ask user in Discord, then relay answer to ccr"
-                "\n- If error: explain the ACTUAL error from ccr_response"
-                "\n\nUse task_id for follow-up operations like open_pr, update_embed, etc."
+                "⚠️ CRITICAL: Your Discord response MUST be based ONLY on ccr_response above!\n"
+                "ccr_response contains what the coding agent ACTUALLY did - READ IT.\n\n"
+                "❌ NEVER say: 'I cannot access', 'I don't have ability', 'Let me help you manually'\n"
+                "✅ ALWAYS say: 'ccr [did X]' based on the actual ccr_response content\n\n"
+                "DECISION TREE:\n"
+                "1. ccr SUCCESS + files_changed → Summarize changes FROM ccr_response, ask 'Create a PR?'\n"
+                "2. ccr SUCCESS + no files → Report what ccr found/said FROM ccr_response\n"
+                "3. ccr NEEDS INFO → Use YOUR tools (code_search, github_issue) to get it, call polly_agent again\n"
+                "4. ccr ERROR → Explain the ACTUAL error FROM ccr_response\n\n"
+                "TASK IS NOT DONE until user confirms. Keep task_id for follow-ups.\n\n"
+                "TO CREATE PR (when user confirms):\n"
+                f"polly_agent(action='open_pr', task_id='{task_id}', pr_title='...', pr_body='...')\n"
+                "This will: 1) Push the branch to GitHub, 2) Create the PR automatically."
             )
         }
 
     except Exception as e:
         _running_tasks[task_id]["phase"] = "failed"
         _running_tasks[task_id]["messages"].append(f"Error: {e}")
+        _save_tasks()  # Persist error state too
         logger.exception("Task failed")
 
         if embed_manager:
@@ -562,9 +678,13 @@ async def _handle_code_task(
             "repo": repo,
             "branch": branch,
             "_ai_hint": (
-                f"Task failed with error: {e}. "
-                "You have all the context - DO NOT ask the user for repo/issue info you already have. "
-                "Consider: retry the task, try a simpler approach, or explain the error and ask how to proceed."
+                f"⚠️ Task failed with error: {e}\n\n"
+                "DO NOT say 'I cannot access' - explain the ACTUAL error above.\n"
+                "Options:\n"
+                "1. Retry with simpler task description\n"
+                "2. Use code_search/github_issue to gather more context, then retry\n"
+                "3. Explain the error to user and ask how to proceed\n\n"
+                "You have all the context - don't ask user for info you already have."
             )
         }
 
@@ -819,15 +939,47 @@ async def _handle_commit(repo: str, branch: str, message: Optional[str]) -> dict
     }
 
 
-async def _handle_push(repo: str, branch: str) -> dict:
+async def _handle_push(repo: str, branch: str, task_id: Optional[str] = None) -> dict:
     """
-    Push is handled automatically by GitHub API.
-    This is a no-op that just returns info.
+    Push the sandbox branch to GitHub using GitHub App (Polly Bot) credentials.
+
+    ccr works in the Docker sandbox - changes are committed there.
+    This function pushes those commits to GitHub using the App's credentials.
+
+    The push shows as "Polly Bot" and uses secure App token authentication.
     """
-    return {
-        "success": True,
-        "message": "ℹ️ Changes are pushed automatically when using `edit_file` via the GitHub API."
-    }
+    from ..sandbox import get_persistent_sandbox
+
+    sandbox = get_persistent_sandbox()
+
+    # Check if sandbox is running
+    if not await sandbox.is_running():
+        return {"error": "Sandbox is not running. Cannot push changes."}
+
+    # Get the branch name - either from task tracking or parameter
+    actual_branch = branch
+    if task_id and task_id in _running_tasks:
+        actual_branch = _running_tasks[task_id].get("branch_name", branch)
+
+    logger.info(f"Pushing branch {actual_branch} to origin using GitHub App...")
+
+    # Use the sandbox's push_branch method which handles App credentials
+    push_result = await sandbox.push_branch(actual_branch, repo)
+
+    if push_result.exit_code == 0:
+        return {
+            "success": True,
+            "branch": actual_branch,
+            "message": f"✅ Pushed branch `{actual_branch}` to GitHub (via Polly Bot)"
+        }
+    else:
+        error_msg = push_result.stderr or push_result.stdout
+        # Check for common errors
+        if "rejected" in error_msg.lower():
+            return {"error": f"Push rejected - branch may have diverged. Error: {error_msg[:200]}"}
+        if "credential" in error_msg.lower() or "authentication" in error_msg.lower():
+            return {"error": f"GitHub authentication failed. Check if Polly Bot is installed on the repo. Error: {error_msg[:200]}"}
+        return {"error": f"Failed to push: {error_msg[:300]}"}
 
 
 async def _handle_open_pr(
@@ -835,18 +987,36 @@ async def _handle_open_pr(
     head_branch: str,
     base_branch: Optional[str],
     title: Optional[str],
-    body: Optional[str]
+    body: Optional[str],
+    task_id: Optional[str] = None
 ) -> dict:
-    """Create a pull request using shared session."""
+    """
+    Create a pull request.
+
+    This first pushes the sandbox branch to GitHub (if not already pushed),
+    then creates the PR via GitHub API.
+    """
     if not title:
         return {"error": "pr_title parameter is required"}
 
     base = base_branch or "main"
 
-    # Use shared _github_api helper (which uses shared session)
+    # Get actual branch name from task tracking if available
+    actual_branch = head_branch
+    if task_id and task_id in _running_tasks:
+        actual_branch = _running_tasks[task_id].get("branch_name", head_branch)
+
+    # First, push the branch to GitHub
+    logger.info(f"Pushing branch {actual_branch} before creating PR...")
+    push_result = await _handle_push(repo, actual_branch, task_id)
+
+    if not push_result.get("success"):
+        return {"error": f"Failed to push branch before PR: {push_result.get('error', 'Unknown error')}"}
+
+    # Now create the PR via GitHub API
     pr_data = {
         "title": title,
-        "head": head_branch,
+        "head": actual_branch,
         "base": base,
         "body": body or f"Created by Polli bot.\n\n🤖 Automated PR"
     }
@@ -854,12 +1024,35 @@ async def _handle_open_pr(
     status, data = await _github_api("POST", f"/repos/{repo}/pulls", pr_data)
 
     if status == 201:
+        # Update embed if we have task tracking
+        if task_id and task_id in _running_tasks:
+            embed_manager = _running_tasks[task_id].get("embed_manager")
+            if embed_manager:
+                embed_manager.set_status(f"PR #{data['number']} created!")
+                await embed_manager.finish(success=True)
+
         return {
             "success": True,
             "pr_number": data["number"],
             "pr_url": data["html_url"],
+            "branch": actual_branch,
             "message": f"✅ Created PR #{data['number']}: [{title}](<{data['html_url']}>)"
         }
+    elif status == 422 and "pull request already exists" in str(data).lower():
+        # PR already exists - find it
+        list_status, list_data = await _github_api(
+            "GET",
+            f"/repos/{repo}/pulls?head={repo.split('/')[0]}:{actual_branch}&state=open"
+        )
+        if list_status == 200 and list_data:
+            existing_pr = list_data[0]
+            return {
+                "success": True,
+                "pr_number": existing_pr["number"],
+                "pr_url": existing_pr["html_url"],
+                "message": f"ℹ️ PR already exists: #{existing_pr['number']}: [{existing_pr['title']}](<{existing_pr['html_url']}>)"
+            }
+        return {"error": f"PR already exists but couldn't find it: {data.get('message', status)}"}
     else:
         return {"error": f"Failed to create PR: {data.get('message', status)}"}
 

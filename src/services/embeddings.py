@@ -387,7 +387,7 @@ async def search_code(query: str, top_k: int = 5) -> list[dict]:
 
 
 async def pull_and_update():
-    """Pull latest changes and update embeddings."""
+    """Pull latest changes, update embeddings, and sync sandbox."""
     from ..config import config
 
     async with _update_lock:
@@ -398,8 +398,30 @@ async def pull_and_update():
         if had_changes:
             count = await embed_repository(config.embeddings_repo)
             logger.info(f"Update complete. Embedded {count} new/changed chunks.")
+
+            # Also sync the sandbox workspace so it has the latest code
+            await _sync_sandbox_repo()
         else:
             logger.info("No changes detected")
+
+
+async def _sync_sandbox_repo():
+    """Sync the sandbox workspace with the updated local repo."""
+    try:
+        from .code_agent.sandbox import get_persistent_sandbox
+
+        sandbox = get_persistent_sandbox()
+
+        # Check if sandbox is running before syncing
+        if await sandbox.is_running():
+            logger.info("Syncing sandbox workspace with updated repo...")
+            await sandbox.sync_repo(force=True)
+            logger.info("Sandbox workspace synced successfully")
+        else:
+            logger.info("Sandbox not running, skipping sync (will sync on next task)")
+
+    except Exception as e:
+        logger.warning(f"Failed to sync sandbox repo: {e}")
 
 
 async def schedule_update():

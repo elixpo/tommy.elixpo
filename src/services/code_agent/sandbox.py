@@ -353,28 +353,53 @@ class PersistentSandbox:
 
         Each task gets its own branch for isolation.
         Multiple users can work concurrently on different branches.
+
+        IMPORTANT: Always fetches latest from origin and branches from origin/main
+        to ensure we're working with the latest code.
         """
         import uuid
 
         task_id = task_id or str(uuid.uuid4())[:8]
         branch_name = f"task/{task_id}"
 
-        # Ensure we're on main first
+        # CRITICAL: Fetch latest from origin first
+        logger.info("Fetching latest from origin...")
+        fetch_result = await self.execute(
+            "cd /workspace/pollinations && git fetch origin main",
+            as_coder=True
+        )
+        if fetch_result.exit_code != 0:
+            logger.warning(f"git fetch failed: {fetch_result.stderr}")
+
+        # Ensure we're on main first and update it to origin/main
         await self.execute(
             "cd /workspace/pollinations && git checkout main 2>/dev/null || true",
             as_coder=True
         )
 
-        # Create and checkout new branch
+        # Reset local main to origin/main to ensure we're up to date
+        reset_result = await self.execute(
+            "cd /workspace/pollinations && git reset --hard origin/main",
+            as_coder=True
+        )
+        if reset_result.exit_code != 0:
+            logger.warning(f"git reset failed: {reset_result.stderr}")
+
+        # Create and checkout new branch FROM the updated main
         result = await self.execute(
             f"cd /workspace/pollinations && git checkout -b {branch_name}",
             as_coder=True
         )
 
         if result.exit_code != 0:
-            # Branch might exist, try checking it out
+            # Branch might exist, delete it and recreate from fresh main
+            logger.info(f"Branch {branch_name} exists, recreating from fresh main...")
+            await self.execute(
+                f"cd /workspace/pollinations && git branch -D {branch_name} 2>/dev/null || true",
+                as_coder=True
+            )
             result = await self.execute(
-                f"cd /workspace/pollinations && git checkout {branch_name}",
+                f"cd /workspace/pollinations && git checkout -b {branch_name}",
                 as_coder=True
             )
 
@@ -386,7 +411,7 @@ class PersistentSandbox:
         )
 
         self.active_branches[task_id] = branch
-        logger.info(f"Created task branch {branch_name} for user {user_id}")
+        logger.info(f"Created task branch {branch_name} for user {user_id} (from latest origin/main)")
 
         return branch
 
@@ -576,6 +601,116 @@ class PersistentSandbox:
     def get_repo_path(self) -> Path:
         """Get the host path to the pollinations repo in workspace."""
         return WORKSPACE_DIR / "pollinations"
+
+    async def setup_github_credentials(self, repo: str = "pollinations/pollinations") -> bool:
+        """
+        Configure GitHub App credentials in the sandbox for push operations.
+
+        Uses the GitHub App (Polly Bot) for authentication:
+        - Creates a git credential helper that returns the App token
+        - Tokens auto-refresh (1 hour validity)
+        - All pushes show as "Polly Bot" author
+
+        Args:
+            repo: Repository in owner/repo format
+
+        Returns:
+            True if credentials configured successfully
+        """
+        from ..github_auth import github_app_auth
+
+        if not github_app_auth:
+            logger.warning("GitHub App auth not configured, cannot setup sandbox credentials")
+            return False
+
+        try:
+            # Get a fresh token
+            token = await github_app_auth.get_token()
+            if not token:
+                logger.error("Failed to get GitHub App token")
+                return False
+
+            # Create credential helper script that returns the token
+            # This script will be called by git when it needs credentials
+            credential_script = f'''#!/bin/bash
+# GitHub App credential helper for Polly Bot
+echo "username=x-access-token"
+echo "password={token}"
+'''
+            # Write the credential helper script to sandbox
+            # First, create the script content as a file on host, then copy to container
+            helper_path = SANDBOX_DIR / "git-credential-polly"
+            helper_path.write_text(credential_script)
+
+            # Copy to container
+            await self._run_host_command([
+                "docker", "cp",
+                str(helper_path),
+                f"{CONTAINER_NAME}:/usr/local/bin/git-credential-polly"
+            ])
+
+            # Make executable
+            await self.execute("chmod +x /usr/local/bin/git-credential-polly")
+
+            # Configure git to use this credential helper
+            await self.execute(
+                "cd /workspace/pollinations && git config credential.helper '/usr/local/bin/git-credential-polly'",
+                as_coder=True
+            )
+
+            # Set remote URL to HTTPS (not SSH)
+            await self.execute(
+                f"cd /workspace/pollinations && git remote set-url origin https://github.com/{repo}.git",
+                as_coder=True
+            )
+
+            # Clean up local helper file
+            helper_path.unlink(missing_ok=True)
+
+            logger.info("GitHub App credentials configured in sandbox")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to setup GitHub credentials: {e}")
+            return False
+
+    async def refresh_github_token(self, repo: str = "pollinations/pollinations") -> bool:
+        """
+        Refresh the GitHub App token in the sandbox.
+
+        Call this before push operations to ensure token is valid.
+        Tokens expire after ~1 hour.
+        """
+        return await self.setup_github_credentials(repo)
+
+    async def push_branch(self, branch_name: str, repo: str = "pollinations/pollinations") -> CommandResult:
+        """
+        Push a branch to GitHub using the configured App credentials.
+
+        Args:
+            branch_name: Name of the branch to push
+            repo: Repository in owner/repo format
+
+        Returns:
+            CommandResult with push output
+        """
+        # Refresh credentials before push (ensures valid token)
+        creds_ok = await self.refresh_github_token(repo)
+        if not creds_ok:
+            return CommandResult(
+                exit_code=1,
+                stdout="",
+                stderr="Failed to configure GitHub credentials"
+            )
+
+        # Push the branch
+        result = await self.execute(
+            f"cd /workspace/pollinations && git push -u origin {branch_name}",
+            as_coder=True,
+            timeout=120
+        )
+
+        return result
 
 
 # =============================================================================
