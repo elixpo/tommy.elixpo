@@ -29,7 +29,7 @@ from .claude_code_agent import (
 from .embed_builder import (
     ProgressEmbed,
     ProgressEmbedManager,
-    ChecklistStep,
+    TodoItem,
     StepStatus,
 )
 from .output_summarizer import OutputSummarizer, OutputSummary, output_summarizer
@@ -46,7 +46,7 @@ __all__ = [
     # Progress embeds
     "ProgressEmbed",
     "ProgressEmbedManager",
-    "ChecklistStep",
+    "TodoItem",
     "StepStatus",
     # Output summarizer
     "OutputSummarizer",
