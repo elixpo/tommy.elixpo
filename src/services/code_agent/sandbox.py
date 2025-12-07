@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SandboxConfig:
     """Configuration for a sandbox."""
-    image: str = "node:20-slim"  # Node.js for ccr
+    image: str = "node:20"  # Full Node.js image - ccr needs bash, git, build tools
     memory_limit: str = "2g"
     cpu_limit: float = 2.0
     timeout: int = 300  # 5 minutes default
@@ -192,7 +192,7 @@ class SandboxManager:
 
         sandbox.container_id = result.stdout.strip()
 
-        # Install git and ca-certificates (node:20-slim doesn't include them)
+        # Install git and ca-certificates (ensure they're available)
         install_git = await self._run_host_command([
             "docker", "exec", f"polli_sandbox_{sandbox.id}",
             "sh", "-c", "apt-get update && apt-get install -y git ca-certificates --no-install-recommends && rm -rf /var/lib/apt/lists/*"
