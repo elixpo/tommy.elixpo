@@ -62,8 +62,9 @@ class TerminalSession:
         Send a command to this terminal and wait for output.
 
         Uses a marker to detect command completion.
+        Reads in chunks to handle programs that don't output line-by-line.
         """
-        marker = f"__CCR_DONE_{self.thread_id}_{datetime.utcnow().timestamp()}__"
+        marker = f"__CCR_DONE_{self.thread_id}_{int(datetime.utcnow().timestamp())}__"
 
         # Send command with completion marker
         full_cmd = f"{command}; echo '{marker}'\n"
@@ -71,37 +72,51 @@ class TerminalSession:
         await self.stdin.drain()
 
         # Read until we see the marker
-        output_lines = []
+        # Use chunk-based reading to handle programs that use \r for progress
+        output_buffer = ""
         start_time = asyncio.get_running_loop().time()
+        chunk_timeout = 1.0  # Read in 1-second chunks for responsiveness
 
         while True:
+            # Check overall timeout
             if timeout:
-                remaining = timeout - (asyncio.get_running_loop().time() - start_time)
-                if remaining <= 0:
-                    return "\n".join(output_lines) + "\n[TIMEOUT]"
-                try:
-                    line = await asyncio.wait_for(
-                        self.stdout.readline(),
-                        timeout=remaining
-                    )
-                except asyncio.TimeoutError:
-                    return "\n".join(output_lines) + "\n[TIMEOUT]"
+                elapsed = asyncio.get_running_loop().time() - start_time
+                if elapsed >= timeout:
+                    return output_buffer + "\n[TIMEOUT]"
+                current_timeout = min(chunk_timeout, timeout - elapsed)
             else:
-                line = await self.stdout.readline()
+                current_timeout = chunk_timeout
 
-            if not line:
-                break
+            try:
+                # Read available data (up to 64KB)
+                chunk = await asyncio.wait_for(
+                    self.stdout.read(65536),
+                    timeout=current_timeout
+                )
+                if not chunk:
+                    # EOF - process exited
+                    break
 
-            decoded = line.decode(errors="replace").rstrip()
+                decoded = chunk.decode(errors="replace")
+                output_buffer += decoded
 
-            if marker in decoded:
-                # Remove the marker line from output
-                break
+                # Check for marker in accumulated output
+                if marker in output_buffer:
+                    # Remove everything from marker onwards
+                    marker_pos = output_buffer.find(marker)
+                    output_buffer = output_buffer[:marker_pos].rstrip()
+                    break
 
-            output_lines.append(decoded)
+            except asyncio.TimeoutError:
+                # No data available, but keep waiting if no overall timeout
+                # or if overall timeout not reached
+                if timeout is None:
+                    continue
+                # For commands with timeout, check if we should keep waiting
+                continue
 
         self.last_used = datetime.utcnow()
-        return "\n".join(output_lines)
+        return output_buffer
 
     async def close(self):
         """Close this terminal session."""
@@ -799,7 +814,8 @@ sed -i -e :a -e '/^\\n*$/{$d;N;ba' -e '}' "$COMMIT_MSG_FILE"
         # Build ccr command
         # -p: print mode (non-interactive, outputs result and exits)
         # --dangerously-skip-permissions: auto-accept (safe in sandbox)
-        ccr_cmd = f"ccr code -p --dangerously-skip-permissions {escaped_prompt}"
+        # Use stdbuf to force line buffering (ccr may buffer output)
+        ccr_cmd = f"stdbuf -oL -eL ccr code -p --dangerously-skip-permissions {escaped_prompt}"
 
         logger.info(f"Running ccr on branch {branch.branch_name}: {prompt[:100]}...")
 

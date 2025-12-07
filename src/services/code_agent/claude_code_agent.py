@@ -89,8 +89,12 @@ def parse_todos_from_output(output: str) -> List[TodoItem]:
                 content = match.group(2).strip()
 
         if content and len(content) > 2 and content not in seen:
-            # Skip generic/noisy items
-            skip_patterns = ['token', 'cost', 'session', 'api', 'model']
+            # Skip generic/noisy items and heartbeat messages
+            skip_patterns = [
+                'token', 'cost', 'session', 'api', 'model',
+                'working on the task', 'analyzing code', 'thinking',
+                'processing', 'making changes', 'working...',
+            ]
             if not any(skip in content.lower() for skip in skip_patterns):
                 seen.add(content)
                 todos.append(TodoItem(content=content[:100], status=status))

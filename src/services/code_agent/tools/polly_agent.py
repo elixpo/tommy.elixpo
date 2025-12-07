@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
@@ -606,8 +607,10 @@ async def _handle_code_task(
 
             if embed_manager:
                 # Update current action from message
-                # Strip emojis and clean up for title
+                # Strip emojis and time suffix like "(3m 32s)" for cleaner title
                 clean_msg = message.lstrip("🔧🚀⏳🔍💭⚙️📝✅⚠️❌ ").strip()
+                clean_msg = re.sub(r'\s*\(\d+m \d+s\)\s*$', '', clean_msg)  # Remove time suffix
+                clean_msg = clean_msg.rstrip('.')  # Remove trailing dots
                 if clean_msg and len(clean_msg) > 3:
                     embed_manager.set_action(clean_msg[:60])
 
