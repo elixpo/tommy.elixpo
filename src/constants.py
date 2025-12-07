@@ -497,14 +497,16 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Code agent for git operations and autonomous coding. USE THIS - never say "I cannot".
+            "description": """Code agent for ACTUAL CODE CHANGES ONLY. Do NOT use for questions, summaries, searches, or lookups.
+
+**WHEN TO USE**: User explicitly asks to WRITE/EDIT/MODIFY code, implement features, fix bugs BY CODING, create branches, commit changes, or open PRs.
+
+**WHEN NOT TO USE**: Searching code, reading files for info, summarizing changes, answering questions, looking up issues/PRs. Use github_issue, github_pr, code_search, or git log instead.
 
 **DYNAMIC WORKFLOW**: task → read ccr_response → decide next step → update embed → repeat or finish
 
-**CRITICAL: task param must include FULL context** - issue body, file paths, code snippets. Read ccr_response and respond appropriately.
-
 Autonomous Tasks:
-- task: Coding task. Pass COMPLETE context. Returns ccr_response (READ IT), sandbox_id, task_id.
+- task: Coding task (ACTUAL CODE CHANGES). Pass COMPLETE context. Returns ccr_response, sandbox_id, task_id.
 - status: Check task status (task_id)
 - update_embed: Update Discord embed (task_id, status, finish=true to close)
 
@@ -515,7 +517,7 @@ Sandbox Operations:
 
 Git Operations [admin]:
 - list_branches/create_branch/delete_branch: Branch management [confirm for delete]
-- read_file/list_files: Read repo files
+- read_file/list_files: Read repo files (prefer code_search for lookups)
 - edit_file: Edit file (file_path, file_content)
 - commit/push: Save changes (commit_message)
 - open_pr: Create PR (pr_title, pr_body, base_branch)
@@ -712,11 +714,13 @@ TOOL_KEYWORDS = {
         re.IGNORECASE
     ),
     "polly_agent": re.compile(
-        r'\b(implement\w*|refactor\w*|coding\s*agent|autonomous|'
-        r'fix\s*(issue|bug|this|it|the)|make\s*(branch|changes)|'
-        r'edit\s*(the\s*)?(code|file|readme)|update\s*(the\s*)?(code|file)|'
-        r'create\s*(a\s*)?branch|new\s*branch|delete\s*branch|'
-        r'commit|push\s*(to\s*)?|read\s*file|list\s*files|write\s*code)\b',
+        # Only match explicit coding/implementation requests - NOT searches/summaries
+        r'\b(implement\w*|refactor\w*|coding\s*agent|'
+        r'write\s+(the\s+)?(code|function|class|method)|'
+        r'edit\s+(the\s+)?(code|file)|modify\s+(the\s+)?(code|file)|'
+        r'create\s+(a\s+)?branch|make\s+(a\s+)?branch|new\s+branch|delete\s+branch|'
+        r'commit\s+(the\s+)?changes|push\s+(the\s+)?changes|open\s+(a\s+)?pr|'
+        r'code\s+this|build\s+this|develop\s+this)\b',
         re.IGNORECASE
     ),
     "github_custom": re.compile(
@@ -796,8 +800,8 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI.
 - `github_issue` - Issues: get, search, create, comment, close, label, assign, sub-issues
 - `github_pr` - PRs: get, list, review, approve, merge, inline comments, suggestions
 - `github_project` - Projects V2: list, view, add items, set status/fields
-- `polly_agent` - Code agent: branches, file edits, commits, PRs, autonomous coding tasks
-- `github_custom` - Raw data fetching for custom analysis
+- `polly_agent` - **ONLY for ACTUAL CODE CHANGES** (implement, edit code, create branches, commit, open PRs)
+- `github_custom` - Raw data fetching for custom analysis (commits, history, stats)
 - `web_search` - Real-time web search (mode="fast" or "reasoning")
 - `code_search` - Semantic code search by meaning
 
@@ -806,23 +810,23 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI.
 **1. PARALLEL CALLS (mandatory):**
 Call ALL needed tools in ONE response. Never sequential single calls.
 Examples:
-- "fix issue 5735" → github_issue(get #5735) + polly_agent(task) in ONE call
+- "implement fix for issue 5735" → github_issue(get #5735) + polly_agent(task) in ONE call
 - "compare issues 100 and 200" → github_issue(get #100) + github_issue(get #200) together
 - "search for auth bugs and check PR 50" → github_issue(search) + github_pr(get #50) together
 - "what's in the repo?" → github_overview + code_search in ONE call
-- "find similar issues to 123" → github_issue(get #123) + github_issue(find_similar) together
+- "summarize recent changes" → github_custom(action="commits") - NOT polly_agent!
 
 **2. PROACTIVE (fetch, don't ask):**
 User mentions #123? → Call tool to GET it, don't ask for details.
-Need file contents? → Use polly_agent or github_pr to read it.
+Need file contents for info? → Use code_search or github_pr(get files).
 Only ask when info truly doesn't exist.
 
-**3. USE YOUR TOOLS:**
-Never say "I cannot" or "tool not available". If it's in your function list, CALL IT.
-polly_agent handles: branches, file edits, commits, PRs, coding tasks - USE IT.
-When calling polly_agent(task=...), include FULL context in the task param (issue body, file paths, code).
+**3. WHEN TO USE POLLY_AGENT vs OTHER TOOLS:**
+✅ USE polly_agent: "implement this feature", "write code to fix X", "create a branch", "commit changes", "open a PR"
+❌ DON'T use polly_agent: "summarize changes", "what changed recently", "search for X", "show me the code", "list commits"
+For summaries/searches/lookups → Use github_custom, github_issue, github_pr, code_search instead.
 
-**4. POLLY_AGENT DYNAMIC WORKFLOW:**
+**4. POLLY_AGENT DYNAMIC WORKFLOW (when you DO use it):**
 After polly_agent returns, READ ccr_response carefully and decide:
 - ccr asks for info? → Provide it (use code_search, web_search) OR ask user if needed
 - ccr completed? → Summarize for user, use update_embed(status="Done"), offer PR
