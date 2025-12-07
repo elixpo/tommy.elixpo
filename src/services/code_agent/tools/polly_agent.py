@@ -28,13 +28,14 @@ import json
 import logging
 import os
 import re
+import shlex
 from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
 
 import discord
 
-from ..sandbox import sandbox_manager, Sandbox, SANDBOX_DIR
+from ..sandbox import sandbox_manager, Sandbox, SANDBOX_DIR, get_persistent_sandbox
 from ..claude_code_agent import get_claude_code_agent, ClaudeCodeResult, parse_todos_from_output, TodoItem
 from ..embed_builder import ProgressEmbedManager, StepStatus
 
@@ -597,56 +598,90 @@ async def _handle_code_task(
     try:
         _running_tasks[task_id]["messages"].append(f"Task {task_id} starting")
 
-        # Run task via the agent (agent handles branch creation internally)
-        agent = get_claude_code_agent()
+        # Get the persistent sandbox
+        sandbox = get_persistent_sandbox()
 
-        # Progress callback - Claude Code style updates
-        async def on_progress(message: str):
-            nonlocal dynamic_todo_indices
-            _running_tasks[task_id]["messages"].append(message)
+        # Ensure sandbox is running
+        if not await sandbox.ensure_running():
+            return {"error": "Failed to start sandbox container"}
 
-            if embed_manager:
-                # Update current action from message
-                # Strip emojis and time suffix like "(3m 32s)" for cleaner title
-                clean_msg = message.lstrip("🔧🚀⏳🔍💭⚙️📝✅⚠️❌ ").strip()
-                clean_msg = re.sub(r'\s*\(\d+m \d+s\)\s*$', '', clean_msg)  # Remove time suffix
-                clean_msg = clean_msg.rstrip('.')  # Remove trailing dots
-                if clean_msg and len(clean_msg) > 3:
-                    embed_manager.set_action(clean_msg[:60])
+        # Get/create terminal for this thread FIRST
+        if embed_manager:
+            embed_manager.set_action("Creating terminal")
+            await embed_manager.update()
 
-                # Try to parse todos from accumulated output
-                accumulated = "\n".join(_running_tasks[task_id]["messages"])
-                todos = parse_todos_from_output(accumulated)
-
-                # Update embed with parsed todos
-                for todo in todos:
-                    if todo.content not in dynamic_todo_indices:
-                        # Add new todo
-                        idx = embed_manager.add_step(todo.content)
-                        dynamic_todo_indices[todo.content] = idx
-
-                    idx = dynamic_todo_indices[todo.content]
-                    if todo.status == "completed":
-                        embed_manager.complete_step(idx)
-                    elif todo.status == "in_progress":
-                        embed_manager.start_step(idx)
-                    elif todo.status == "failed":
-                        embed_manager.fail_step(idx)
-
-                await embed_manager.update()
-
-        # Get channel ID for stale notifications
         discord_channel_id = channel.id if channel else 0
-
-        result: ClaudeCodeResult = await agent.run_task(
-            user_id=user_name or "unknown",
-            prompt=task,
-            task_description=task[:100],
-            on_progress=on_progress,
-            thread_id=thread_id,  # Pass thread_id for universal key (branch + session)
-            discord_user_id=discord_user_id,  # For terminal ownership tracking
-            discord_channel_id=discord_channel_id,  # For stale terminal notifications
+        terminal = await sandbox.terminal_manager.get_terminal(
+            task_id,
+            user_id=discord_user_id,
+            channel_id=discord_channel_id,
         )
+        logger.info(f"Terminal ready for task {task_id}")
+
+        # Create/checkout task branch
+        if embed_manager:
+            embed_manager.set_action("Setting up branch")
+            await embed_manager.update()
+
+        branch_name = f"thread/{task_id}"
+
+        # Fetch latest and create branch from origin/main
+        await terminal.send_command("git fetch origin", timeout=60)
+
+        # Check if branch exists
+        branch_check = await terminal.send_command(f"git branch --list {branch_name}", timeout=10)
+        if branch_name in branch_check:
+            # Branch exists, checkout and rebase
+            await terminal.send_command(f"git checkout {branch_name}", timeout=30)
+            logger.info(f"Checked out existing branch {branch_name}")
+        else:
+            # Create new branch from origin/main
+            await terminal.send_command(f"git checkout -b {branch_name} origin/main", timeout=30)
+            logger.info(f"Created new branch {branch_name}")
+
+        # Build ccr command
+        full_prompt = (
+            f"IMPORTANT: You are working on branch '{branch_name}'. "
+            "Commit your changes to THIS branch. "
+            "Do NOT include any Claude, AI, or bot attribution in commit messages. "
+            "Just describe what was changed.\n\n"
+            f"{task}"
+        )
+        escaped_prompt = shlex.quote(full_prompt)
+        ccr_cmd = f"ccr code -p --dangerously-skip-permissions {escaped_prompt}"
+
+        # Run ccr in terminal
+        if embed_manager:
+            embed_manager.set_action("Running ccr")
+            await embed_manager.update()
+
+        logger.info(f"Running ccr: {task[:100]}...")
+        start_time = asyncio.get_running_loop().time()
+
+        output = await terminal.send_command(ccr_cmd, timeout=None)  # No timeout for ccr
+
+        duration = asyncio.get_running_loop().time() - start_time
+        logger.info(f"ccr completed in {duration:.1f}s, output {len(output)} bytes")
+
+        # Parse results from output
+        todos = parse_todos_from_output(output)
+
+        # Get files changed
+        diff_result = await terminal.send_command("git diff --name-only HEAD~1 2>/dev/null || echo ''", timeout=30)
+        files_changed = [f.strip() for f in diff_result.split('\n') if f.strip() and not f.startswith('fatal')]
+
+        # Build result object (compatible with ClaudeCodeResult)
+        class SimpleResult:
+            def __init__(self):
+                self.success = True
+                self.output = output
+                self.branch_name = branch_name
+                self.files_changed = files_changed
+                self.todos = todos
+                self.duration_seconds = int(duration)
+                self.error = None
+
+        result = SimpleResult()
 
         # Final embed update with all todos from result
         if embed_manager:

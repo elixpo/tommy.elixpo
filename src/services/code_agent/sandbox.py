@@ -68,6 +68,7 @@ class TerminalSession:
 
         # Send command with completion marker
         full_cmd = f"{command}; echo '{marker}'\n"
+        logger.debug(f"Terminal {self.thread_id}: sending command (len={len(command)})")
         self.stdin.write(full_cmd.encode())
         await self.stdin.drain()
 
@@ -75,44 +76,56 @@ class TerminalSession:
         # Use chunk-based reading to handle programs that use \r for progress
         output_buffer = ""
         start_time = asyncio.get_running_loop().time()
-        chunk_timeout = 1.0  # Read in 1-second chunks for responsiveness
+        chunk_timeout = 5.0  # Read in 5-second chunks
+        last_log_time = start_time
+        chunks_read = 0
 
         while True:
             # Check overall timeout
             if timeout:
                 elapsed = asyncio.get_running_loop().time() - start_time
                 if elapsed >= timeout:
+                    logger.warning(f"Terminal {self.thread_id}: command timed out after {elapsed:.0f}s")
                     return output_buffer + "\n[TIMEOUT]"
                 current_timeout = min(chunk_timeout, timeout - elapsed)
             else:
                 current_timeout = chunk_timeout
 
             try:
-                # Read available data (up to 64KB)
+                # Read available data (up to 4KB for more frequent reads)
                 chunk = await asyncio.wait_for(
-                    self.stdout.read(65536),
+                    self.stdout.read(4096),
                     timeout=current_timeout
                 )
                 if not chunk:
                     # EOF - process exited
+                    logger.warning(f"Terminal {self.thread_id}: EOF (process exited?)")
                     break
 
                 decoded = chunk.decode(errors="replace")
                 output_buffer += decoded
+                chunks_read += 1
+
+                # Log progress periodically (every 30s)
+                now = asyncio.get_running_loop().time()
+                if now - last_log_time > 30:
+                    logger.info(f"Terminal {self.thread_id}: {chunks_read} chunks, {len(output_buffer)} bytes, {now - start_time:.0f}s elapsed")
+                    last_log_time = now
 
                 # Check for marker in accumulated output
                 if marker in output_buffer:
                     # Remove everything from marker onwards
                     marker_pos = output_buffer.find(marker)
                     output_buffer = output_buffer[:marker_pos].rstrip()
+                    logger.debug(f"Terminal {self.thread_id}: marker found, output {len(output_buffer)} bytes")
                     break
 
             except asyncio.TimeoutError:
-                # No data available, but keep waiting if no overall timeout
-                # or if overall timeout not reached
-                if timeout is None:
-                    continue
-                # For commands with timeout, check if we should keep waiting
+                # No data available yet - log occasionally
+                now = asyncio.get_running_loop().time()
+                if now - last_log_time > 30:
+                    logger.info(f"Terminal {self.thread_id}: waiting for output... ({now - start_time:.0f}s elapsed, {len(output_buffer)} bytes so far)")
+                    last_log_time = now
                 continue
 
         self.last_used = datetime.utcnow()
@@ -214,15 +227,19 @@ class TerminalManager:
         # Initialize the shell environment
         init_cmds = [
             "export PS1=''",  # No prompt (cleaner output)
-            "export ANTHROPIC_API_KEY=dummy",
             "export HOME=/home/coder",
+            "source ~/.bashrc 2>/dev/null || true",  # Load user environment (PATH, etc)
+            "export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH",  # Ensure ccr is in PATH
             "cd /workspace/pollinations",
         ]
 
         for cmd in init_cmds:
             await terminal.send_command(cmd, timeout=5)
 
-        logger.info(f"Terminal created for thread {thread_id}")
+        # Ensure ccr service is running (it's a background daemon)
+        await terminal.send_command("ccr start 2>/dev/null || true", timeout=10)
+
+        logger.info(f"Terminal ready for thread {thread_id}")
         return terminal
 
     async def close_terminal(self, thread_id: str) -> bool:
