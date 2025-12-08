@@ -767,6 +767,13 @@ class ProgressEmbedManager:
             return self.embed.add_step(name, details)
         return -1
 
+    def reset_steps(self):
+        """Clear all steps for reuse (e.g., continuation tasks)."""
+        if self.embed:
+            self.embed.steps.clear()
+            self.embed.is_complete = False
+            self.embed.success = True
+
     def start_step(self, index: int, details: Optional[str] = None):
         """Mark step as in progress."""
         if self.embed:

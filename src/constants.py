@@ -497,20 +497,24 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Polly's coding agent - handles ALL code operations.
+            "description": """Polly's coding agent - ONLY for ACTUAL CODE EDITS/CHANGES!
 
-⚠️ WORKFLOW:
-1. action='task' → Polly reads files, edits code, runs tests, commits LOCALLY (saves progress, NOT pushed!)
-2. action='push' → Push local commits to GitHub (only when user wants to share/publish)
+⚠️ WHEN TO USE:
+✅ "implement X", "fix bug in Y", "add feature Z", "edit file", "modify code"
+✅ "create branch", "push changes", "open PR"
+❌ "search for X" → use code_search
+❌ "show me the code" → use code_search
+❌ "find the file" → use code_search
+❌ "what does X do" → use code_search then explain
+
+WORKFLOW:
+1. action='task' → EDIT code, fix bugs, implement features (commits locally)
+2. action='push' → Push local commits to GitHub
 3. action='open_pr' → Create PR from pushed branch
 
-LOCAL vs REMOTE: 'task' only saves work locally. User saying "don't commit" means don't push to GitHub.
-The local commit is just saving progress - it's NOT visible until you call 'push'.
+Example: polly_agent(action='task', task='Fix the model routing bug in server.js - change flux fallback to zimage')
 
-IMPORTANT: To read a file, edit code, or make ANY changes - use action='task' with a description.
-Example: polly_agent(action='task', task='Read README.md and add news entry for Model Monitor feature')
-
-Do NOT try read_file, edit_file, etc. - those don't exist. Just describe what you want in task.""",
+DO NOT use polly_agent just to READ files. Use code_search for that, then polly_agent ONLY if edits needed.""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -832,14 +836,17 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Tim
 
 **PROACTIVE**: Fetch data, don't ask. User mentions #123? GET it.
 
-**polly_agent = CODE CHANGES ONLY**
-✅ USE: "implement", "write code", "fix this", "create branch", "open PR"
-❌ DON'T: "search code", "show commits", "summarize changes" → use other tools
+**polly_agent = ACTUAL CODE EDITS ONLY** (STRICT!)
+✅ USE ONLY FOR: "implement X", "fix bug", "edit file", "modify code", "add feature"
+❌ NEVER FOR: "find code", "search", "show file", "read", "list files", "what does X do"
+
+To READ/SEARCH code → code_search FIRST, then polly_agent ONLY if edits needed!
 
 ## polly_agent Rules
 
-**1. GATHER CONTEXT FIRST**
-Before `action="task"`, get info with other tools:
+**1. GATHER CONTEXT FIRST WITH OTHER TOOLS**
+ALWAYS use code_search/github tools BEFORE polly_agent:
+- "fix model routing" → code_search("model routing") FIRST → find files → THEN polly_agent
 - "fix #5735" → github_issue(get 5735) FIRST, then polly_agent with full details
 
 **2. PASS COMPLETE INFO**

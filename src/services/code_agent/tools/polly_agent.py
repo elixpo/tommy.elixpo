@@ -824,9 +824,26 @@ async def _handle_code_task(
 
     # Create progress embed if Discord channel available
     # Shows live status: todos, files, branch, sub-actions
+    # For continuations, reuse existing embed to avoid duplicate messages
     embed_manager: Optional[ProgressEmbedManager] = None
     dynamic_todo_indices: dict[str, int] = {}  # Track todo content -> step index
-    if channel:
+
+    if is_continuation and task_id in _running_tasks:
+        # Reuse existing embed for continuation tasks
+        embed_manager = _running_tasks[task_id].get("embed_manager")
+        if embed_manager:
+            # Reset the embed for new work
+            embed_manager.reset_steps()
+            embed_manager.add_step("Setting up environment")
+            embed_manager.add_step("Creating terminal")
+            embed_manager.add_step("Setting up branch")
+            embed_manager.add_step("Working on task")
+            embed_manager.add_step("Processing results")
+            embed_manager.start_step(0)
+            asyncio.create_task(embed_manager.update())
+            logger.info(f"Reusing embed for continuation task {task_id}")
+
+    if not embed_manager and channel:
         embed_manager = ProgressEmbedManager(channel)
         try:
             await embed_manager.start(current_action="Setting up environment")
@@ -927,7 +944,6 @@ async def _handle_code_task(
         # Run ccr with -p flag
         # Use --session-id for NEW sessions, --resume for continuations
         # This ensures each Discord thread has its own isolated ccr conversation context
-        escaped_prompt = shlex.quote(full_prompt)
 
         # Generate a deterministic UUID from thread_id for ccr session isolation
         session_uuid = str(uuid.UUID(hashlib.md5(f"polly-{task_id}".encode()).hexdigest()))
@@ -941,8 +957,11 @@ async def _handle_code_task(
             ccr_flags = f"-p --dangerously-skip-permissions --session-id {session_uuid}"
             logger.info(f"Creating ccr session {session_uuid} for task {task_id}")
 
-        # Wrap ccr in subshell to prevent terminal death if ccr crashes
-        ccr_cmd = f"(ccr code {ccr_flags} {escaped_prompt})"
+        # Use printf piped to ccr - avoids shell escaping issues with quotes/newlines
+        # printf %s preserves the prompt exactly, and ccr reads from stdin with -p flag
+        # Escape special chars for printf: backslash and percent
+        safe_prompt = full_prompt.replace('\\', '\\\\').replace('%', '%%')
+        ccr_cmd = f"printf '%s' {shlex.quote(safe_prompt)} | ccr code {ccr_flags}"
 
         logger.info(f"Running ccr: {task[:100]}...")
         start_time = asyncio.get_running_loop().time()
