@@ -38,7 +38,6 @@ import discord
 from ..sandbox import sandbox_manager, Sandbox, SANDBOX_DIR, get_persistent_sandbox
 from ..claude_code_agent import get_claude_code_agent, ClaudeCodeResult, parse_todos_from_output, TodoItem
 from ..embed_builder import ProgressEmbedManager, StepStatus
-from ..task_queue import get_task_queue, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -623,44 +622,6 @@ def _handle_get_notes(task_id: Optional[str], category: Optional[str] = None) ->
     }
 
 
-def _handle_queue_status(user_id: Optional[int] = None) -> dict:
-    """
-    Get task queue status - shows active tasks, waiting tasks, and queue health.
-
-    If user_id provided, also shows user-specific limits.
-    """
-    queue = get_task_queue()
-    status = queue.get_status()
-
-    # Build message
-    lines = [
-        "**Task Queue Status:**",
-        f"- Active: {status['active']}/{status['max_concurrent']}",
-        f"- Waiting: {status['total_waiting']} (urgent: {status['waiting'].get('urgent', 0)}, "
-        f"normal: {status['waiting'].get('normal', 0)}, background: {status['waiting'].get('background', 0)})",
-        f"- Total processed: {status['total_completed']}/{status['total_submitted']}",
-    ]
-
-    if status['active_tasks']:
-        lines.append("")
-        lines.append("**Active Tasks:**")
-        for t in status['active_tasks'][:5]:
-            lines.append(f"- `{t['task_id'][:8]}...`: {t['description'] or 'No description'}")
-
-    if user_id:
-        user_status = queue.get_user_status(user_id)
-        lines.append("")
-        lines.append(f"**Your Limits:** {user_status['active_count']}/{user_status['max_per_user']} active, "
-                    f"{user_status['waiting_count']} waiting")
-        if not user_status['can_submit']:
-            lines.append("⚠️ At limit - new tasks will be queued")
-
-    return {
-        "status": status,
-        "message": "\n".join(lines),
-    }
-
-
 def clear_pending_confirmation(task_id: str) -> bool:
     """
     Clear pending confirmation state after user responds.
@@ -922,40 +883,10 @@ async def _handle_code_task(
             logger.warning(f"Failed to create progress embed: {e}")
             embed_manager = None
 
-    # Task queue - ensures fair scheduling and prevents overload
-    # Submit to queue and wait for slot (immediate if slots available)
-    queue = get_task_queue()
-    queued_task = await queue.submit(
-        task_id=task_id,
-        thread_id=thread_id or 0,
-        user_id=discord_user_id,
-        priority="normal",  # Could be passed as parameter for urgent tasks
-        description=task[:50],
-    )
-
-    # Wait for queue slot if needed
-    if not queued_task.event.is_set():
-        if embed_manager:
-            # Show queue position
-            position = queue._get_queue_position(task_id)
-            embed_manager.set_queue_position(position)
-            embed_manager.set_action(f"Waiting in queue (#{position})")
-            asyncio.create_task(embed_manager.update())  # Fire-and-forget
-        # Wait with timeout (max 5 minutes in queue)
-        try:
-            await asyncio.wait_for(queued_task.event.wait(), timeout=300)
-        except asyncio.TimeoutError:
-            return {
-                "error": "Task queued too long - system busy. Try again later.",
-                "queue_status": queue.get_status(),
-            }
-
     try:
         _running_tasks[task_id]["messages"].append(f"Task {task_id} starting")
 
-        # Clear queue position now that we're running
         if embed_manager:
-            embed_manager.set_queue_position(0)
             embed_manager.complete_step(0)  # Complete "Setting up environment"
 
         # Get the persistent sandbox
@@ -1224,8 +1155,6 @@ async def _handle_code_task(
         }
 
     finally:
-        # Complete the queue task (release slot for next task)
-        await queue.complete(task_id)
         asyncio.create_task(_cleanup_task(task_id, delay=300))
 
 
