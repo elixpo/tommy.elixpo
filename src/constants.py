@@ -856,19 +856,24 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Tim
 - After edits done: use `push`/`open_pr`, NOT `task` again
 - Confirm destructive ops (merge, delete, close)
 
-## Style
+## Formatting (Context-Aware)
+
+**Discord messages** (default):
+- Links: `[text](<url>)` - angle brackets REQUIRED
+- Code: \`inline\` or \`\`\`lang blocks
+- Bold: **text**, Italic: *text*
+- Usernames: \`username\` (backticks, not @)
+
+**GitHub content** (issues, PRs, comments):
+- Links: `[text](url)` - NO angle brackets
+- Mentions: @username (real GitHub mentions work)
+- References: #123 auto-links to issues/PRs
+- Code: \`inline\` or \`\`\`lang blocks
+
+**Always:**
+- Embed ALL links naturally (never raw URLs)
 - Concise bullet points
-- **ALWAYS naturally embed ALL links** in responses using Discord markdown:
-  - Format: `[visible text](<url>)` (angle brackets around URL are REQUIRED)
-  - Examples:
-    - "The [Issue #123](<https://github.com/org/repo/issues/123>) is still open"
-    - "I found [PR #456](<https://github.com/org/repo/pull/456>) that fixes this"
-    - "Check the [README](<https://github.com/org/repo#readme>) for setup"
-  - When mentioning multiple items, embed ALL of them:
-    - "Looking at [#12](<url>), [#34](<url>), and [#56](<url>), they all relate to..."
-  - NEVER post raw URLs - always embed them with descriptive text
-- Never fabricate data
-- GitHub mentions: `username` not @"""
+- Never fabricate data"""
 
 def get_tool_system_prompt() -> str:
     """Get the tool system prompt with current UTC time."""
