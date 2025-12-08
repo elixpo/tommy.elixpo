@@ -677,19 +677,18 @@ async def handle_reply_context(message: discord.Message, text: str, ref_msg: dis
         if ref_msg is None:
             ref_msg = await message.channel.fetch_message(message.reference.message_id)
 
-        # Include original author info when replying to someone else's message
-        # This ensures issues credit the right person
-        original_author = ref_msg.author.name if ref_msg.author else "Unknown"
+        # Include both authors when replying to someone else's message
+        original_author = ref_msg.author.name if ref_msg.author else None
         requester = message.author.name
 
-        # Only add author attribution if replying to a DIFFERENT user's message
-        if ref_msg.author and ref_msg.author.id != message.author.id:
-            author_note = f"\n\n[Originally reported by: {original_author} | Issue requested by: {requester}]"
+        # Only add dual authorship if replying to a DIFFERENT user's message
+        if original_author and ref_msg.author.id != message.author.id:
+            author_note = f"\n\n[Authors: {original_author}, {requester}]"
         else:
             author_note = ""
 
         if text and ref_msg.content:
-            return f"{ref_msg.content}{author_note}\n\nAdditional context from {requester}: {text}"
+            return f"{ref_msg.content}{author_note}\n\nAdditional context: {text}"
         elif not text:
             return f"{ref_msg.content}{author_note}"
     except Exception as e:
