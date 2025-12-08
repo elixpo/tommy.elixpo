@@ -812,7 +812,7 @@ async def process_message(
     }
 
     # Tool-specific admin actions - imported from constants.py (single source of truth)
-    from constants import ADMIN_ACTIONS
+    from .constants import ADMIN_ACTIONS
     ISSUE_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_issue", set())
     PR_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_pr", set())
     PROJECT_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_project", set())
