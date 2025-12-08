@@ -157,9 +157,9 @@ GITHUB_TOOLS = [
 
 Actions:
 - get: Get issue (issue_number, include_comments)
-- search: Search (keywords, state, labels)
-- search_user: User's issues (discord_username, state)
-- find_similar: Find duplicates (keywords, limit)
+- search: General issue search with filters (keywords, state, labels)
+- search_user: User's issues by discord username (discord_username, state)
+- find_similar: Find potential DUPLICATES before creating new issue (keywords, limit)
 - list_labels / list_milestones: List available
 - create: New issue (title, description)
 - comment: Add comment WITHOUT closing (issue_number, comment) - don't use if closing!
@@ -341,7 +341,9 @@ Actions:
         "type": "function",
         "function": {
             "name": "github_custom",
-            "description": """Fetch raw GitHub data for custom analysis. Describe what you need in plain English (request). Use include_body=true for full text.""",
+            "description": """Fetch raw GitHub data for custom analysis.
+Use for: commit history, contributor stats, activity metrics, stale issue detection, spam detection.
+NOT for: creating/editing issues (use github_issue), PRs (use github_pr), code changes (use polly_agent).""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -374,7 +376,7 @@ Actions:
 - get_files/get_diff/get_checks/get_commits: PR details (pr_number)
 - get_threads/get_review_comments: Review discussions (pr_number)
 - get_file_at_ref: Get file content at branch/commit (file_path, ref)
-- review: AI code review (pr_number, post_review_to_github)
+- review: AI code review analyzing bugs/security/perf (pr_number, post_review_to_github=true to post as GitHub comment)
 - comment: Add comment (pr_number, comment)
 - inline_comment: Comment on line (pr_number, path, line, comment, side) [admin]
 - suggest: Code suggestion (pr_number, path, line, suggestion) [admin]
@@ -498,24 +500,19 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Polly's coding agent - ONLY for ACTUAL CODE EDITS/CHANGES!
+            "description": """Polly's coding agent - ONLY for ACTUAL CODE EDITS!
 
-⚠️ WHEN TO USE:
-✅ "implement X", "fix bug in Y", "add feature Z", "edit file", "modify code"
-✅ "create branch", "push changes", "open PR"
-❌ "search for X" → use code_search
-❌ "show me the code" → use code_search
-❌ "find the file" → use code_search
-❌ "what does X do" → use code_search then explain
+⚠️ STRICT USAGE:
+✅ USE: "implement X", "fix bug", "add feature", "edit code", "modify file", "refactor"
+❌ NEVER: "search", "find", "show", "read", "list", "what does X do" → use code_search!
 
 WORKFLOW:
-1. action='task' → EDIT code, fix bugs, implement features (commits locally)
-2. action='push' → Push local commits to GitHub
-3. action='open_pr' → Create PR from pushed branch
+1. code_search FIRST → find relevant files
+2. action='task' → EDIT code (auto-commits locally, auto-creates branch)
+3. action='push' → Push to GitHub (after edits done)
+4. action='open_pr' → Create PR (after push)
 
-Example: polly_agent(action='task', task='Fix the model routing bug in server.js - change flux fallback to zimage')
-
-DO NOT use polly_agent just to READ files. Use code_search for that, then polly_agent ONLY if edits needed.""",
+Example: polly_agent(action='task', task='Fix model routing bug in server.js - change flux fallback to zimage')""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -526,7 +523,7 @@ DO NOT use polly_agent just to READ files. Use code_search for that, then polly_
                     },
                     "task": {
                         "type": "string",
-                        "description": "REQUIRED for action='task'. Describe what to do - reading files, editing code, running tests, etc. Be specific!"
+                        "description": "REQUIRED for action='task'. Describe the CODE EDIT to make - what to fix, implement, or modify. Be specific!"
                     },
                     "question": {
                         "type": "string",
@@ -559,7 +556,10 @@ CODE_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "code_search",
-        "description": """Semantic code search - find code by meaning, not keywords. Returns snippets with file paths.""",
+        "description": """Semantic code search - find code by meaning. ALWAYS use this BEFORE polly_agent to find relevant files!
+
+Use for: "where is X?", "find the code that does Y", "show me the file for Z", reading/understanding code.
+Returns: Code snippets with file paths. Use these to decide what to edit with polly_agent.""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -585,7 +585,9 @@ WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": """Real-time web search for current info. mode="fast" for quick lookups, mode="reasoning" for complex analysis.""",
+        "description": """Real-time web search for current info.
+mode="fast": Quick factual lookups (faster, less tokens)
+mode="reasoning": Multi-step analysis with citations (slower, thorough research)""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -747,7 +749,10 @@ TOOL_KEYWORDS = {
         r'edit\s+(the\s+)?(code|file)|modify\s+(the\s+)?(code|file)|'
         r'create\s+(a\s+)?branch|make\s+(a\s+)?branch|new\s+branch|delete\s+branch|'
         r'commit\s+(the\s+)?changes|push\s+(the\s+)?changes|open\s+(a\s+)?pr|'
-        r'code\s+this|build\s+this|develop\s+this)\b',
+        r'code\s+this|build\s+this|develop\s+this|'
+        r'fix\s+(the\s+)?(bug|issue|error|problem)|'
+        r'change\s+(the\s+)?(code|file)|update\s+(the\s+)?(code|file)|'
+        r'add\s+(a\s+)?(feature|function|method)|remove\s+(the\s+)?(code|function))\b',
         re.IGNORECASE
     ),
     "github_custom": re.compile(
@@ -837,42 +842,19 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Tim
 
 **PROACTIVE**: Fetch data, don't ask. User mentions #123? GET it.
 
-**polly_agent = ACTUAL CODE EDITS ONLY** (STRICT!)
-✅ USE ONLY FOR: "implement X", "fix bug", "edit file", "modify code", "add feature"
-❌ NEVER FOR: "find code", "search", "show file", "read", "list files", "what does X do"
+## polly_agent (CODE EDITS ONLY!)
+✅ USE: "implement", "fix bug", "edit code", "add feature", "modify file"
+❌ NEVER: "search", "find", "show", "read" → use code_search!
 
-To READ/SEARCH code → code_search FIRST, then polly_agent ONLY if edits needed!
+**WORKFLOW:**
+1. code_search/github tools FIRST → gather context
+2. polly_agent(task="Fix X in file Y - [full details]") → edit code
+3. polly_agent(push) → push changes | polly_agent(open_pr) → create PR
 
-## polly_agent Rules
-
-**1. GATHER CONTEXT FIRST WITH OTHER TOOLS**
-ALWAYS use code_search/github tools BEFORE polly_agent:
-- "fix model routing" → code_search("model routing") FIRST → find files → THEN polly_agent
-- "fix #5735" → github_issue(get 5735) FIRST, then polly_agent with full details
-
-**2. PASS COMPLETE INFO**
-polly_agent(action="task", task="Fix #5735: [FULL DESCRIPTION]\\nFiles: src/x.py\\nProblem: [exact issue]")
-
-**3. RESPONSE = agent_response**
-After polly_agent returns, your message MUST quote agent_response. Never say "I cannot access".
-
-**4. FOLLOW-UPS: push/open_pr, NOT task!**
-After I completed changes:
-- "make a branch" / "push it" → `action="push"` (NOT task!)
-- "open a PR" → `action="open_pr"`
-
-WRONG: polly_agent(action="task") after changes done - re-runs everything!
-RIGHT: polly_agent(action="push") - pushes existing changes
-
-**5. CONFIRM DESTRUCTIVE OPS**
-merge, delete_branch, lock, close PR → confirm first.
-
-**6. DYNAMIC STATE - ASK USER WHEN NEEDED**
-If I need clarification or you need confirmation:
-- Call `polly_agent(action='ask_user', question='...')` to set pending confirmation
-- Then send a Discord message with the question
-- WAIT for user response before proceeding (only task owner can respond)
-- User's response will be in thread history on next call
+**RULES:**
+- ALWAYS quote agent_response in your reply
+- After edits done: use `push`/`open_pr`, NOT `task` again
+- Confirm destructive ops (merge, delete, close)
 
 ## Style
 - Concise bullet points

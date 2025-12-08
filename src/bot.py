@@ -811,14 +811,11 @@ async def process_message(
         "polly_agent": CODE_AGENT_HANDLERS.get("polly_agent"),
     }
 
-    # Tool-specific admin actions (some actions like "create" are admin for PRs but not issues)
-    ISSUE_ADMIN_ACTIONS = {"close", "reopen", "edit", "label", "unlabel", "assign", "unassign",
-                           "milestone", "lock", "link", "create_sub_issue", "add_sub_issue", "remove_sub_issue"}
-    PR_ADMIN_ACTIONS = {"request_review", "remove_reviewer", "approve", "request_changes", "merge",
-                        "update", "create", "convert_to_draft", "ready_for_review", "update_branch",
-                        "inline_comment", "suggest", "resolve_thread", "unresolve_thread",
-                        "enable_auto_merge", "disable_auto_merge", "close", "reopen"}
-    PROJECT_ADMIN_ACTIONS = {"add", "remove", "set_status", "set_field"}
+    # Tool-specific admin actions - imported from constants.py (single source of truth)
+    from constants import ADMIN_ACTIONS
+    ISSUE_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_issue", set())
+    PR_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_pr", set())
+    PROJECT_ADMIN_ACTIONS = ADMIN_ACTIONS.get("github_project", set())
 
     def check_admin(tool_name: str, action: str) -> dict | None:
         """
