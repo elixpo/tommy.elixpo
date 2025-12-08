@@ -38,6 +38,7 @@ import discord
 from ..sandbox import sandbox_manager, Sandbox, SANDBOX_DIR, get_persistent_sandbox
 from ..claude_code_agent import get_claude_code_agent, ClaudeCodeResult, parse_todos_from_output, TodoItem
 from ..embed_builder import ProgressEmbedManager, StepStatus
+from ..task_queue import get_task_queue, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,120 @@ def _load_tasks():
 
 # Load tasks on module import
 _load_tasks()
+
+
+def _build_ccr_interaction_summary(
+    task: str,
+    output: str | None,
+    files_changed: list[str],
+    success: bool,
+    todos: list = None,
+) -> dict:
+    """
+    Build a STRUCTURED summary of a ccr interaction for bot AI context.
+
+    Instead of raw truncated output, we extract meaningful information:
+    - Task prompt (what was asked)
+    - Files changed with change type (created, modified, deleted)
+    - Key actions taken (extracted from output patterns)
+    - Completion status
+    - Any errors or warnings
+
+    This gives bot AI much better context than raw output snippets.
+    """
+    summary = {
+        "prompt": task,
+        "success": success,
+        "files_changed": files_changed,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    if not output:
+        summary["summary"] = "No output captured"
+        return summary
+
+    # Extract key information from ccr output
+    actions = []
+    errors = []
+    warnings = []
+
+    output_lower = output.lower()
+
+    # Detect what ccr did based on output patterns
+    if "created file" in output_lower or "wrote" in output_lower:
+        actions.append("Created new file(s)")
+    if "edited" in output_lower or "modified" in output_lower or "updated" in output_lower:
+        actions.append("Modified existing file(s)")
+    if "deleted" in output_lower or "removed" in output_lower:
+        actions.append("Deleted file(s)")
+    if "commit" in output_lower:
+        actions.append("Committed changes")
+    if "test" in output_lower and ("pass" in output_lower or "success" in output_lower):
+        actions.append("Tests passed")
+    if "test" in output_lower and ("fail" in output_lower or "error" in output_lower):
+        actions.append("Tests failed")
+    if "installed" in output_lower or "npm install" in output_lower:
+        actions.append("Installed dependencies")
+    if "refactor" in output_lower:
+        actions.append("Refactored code")
+
+    # Extract errors and warnings
+    for line in output.split('\n'):
+        line_lower = line.lower().strip()
+        if line_lower.startswith('error:') or 'error:' in line_lower:
+            errors.append(line.strip()[:200])
+        elif line_lower.startswith('warning:') or 'warn:' in line_lower:
+            warnings.append(line.strip()[:200])
+
+    # Extract any "summary" or conclusion from ccr (often at the end)
+    # Look for patterns like "Done!", "Complete", "Summary:", etc.
+    conclusion = None
+    lines = output.strip().split('\n')
+    for line in reversed(lines[-20:]):  # Check last 20 lines
+        line_stripped = line.strip()
+        if len(line_stripped) > 10 and len(line_stripped) < 500:
+            # Skip tool output markers
+            if not line_stripped.startswith('[') and not line_stripped.startswith('{'):
+                if any(word in line_stripped.lower() for word in ['done', 'complete', 'finish', 'success', 'created', 'updated', 'implement']):
+                    conclusion = line_stripped
+                    break
+
+    # Build summary
+    summary_parts = []
+    if actions:
+        summary_parts.append(f"Actions: {', '.join(actions[:5])}")
+    if files_changed:
+        summary_parts.append(f"Files ({len(files_changed)}): {', '.join(files_changed[:5])}")
+        if len(files_changed) > 5:
+            summary_parts.append(f"  (+{len(files_changed) - 5} more)")
+    if conclusion:
+        summary_parts.append(f"Result: {conclusion}")
+    if errors:
+        summary_parts.append(f"Errors: {errors[0]}")
+    if warnings and len(warnings) <= 3:
+        summary_parts.append(f"Warnings: {len(warnings)}")
+
+    summary["summary"] = "\n".join(summary_parts) if summary_parts else "Task processed"
+    summary["actions"] = actions
+    if errors:
+        summary["errors"] = errors[:3]  # Keep first 3 errors
+    if warnings:
+        summary["warning_count"] = len(warnings)
+
+    # Also keep a trimmed version of raw output for detailed inspection
+    # But now it's secondary to the structured summary
+    # INCREASED: More context helps bot AI make better decisions
+    if len(output) > 4000:
+        # Keep beginning and end (most useful parts) - increased from 2000 to 4000 total
+        summary["output_preview"] = output[:2000] + "\n...[truncated]...\n" + output[-2000:]
+    else:
+        summary["output_preview"] = output
+
+    # Include todos if available
+    if todos:
+        summary["todos"] = [{"content": t.content, "status": t.status} for t in todos[:10]]
+
+    return summary
 
 
 # NOTE: get_task_for_thread and set_task_for_thread removed
@@ -224,6 +339,21 @@ async def tool_polly_agent(
         if action == "list_tasks":
             return _handle_list_tasks()
 
+        # Set pending confirmation - bot AI asks user for input
+        if action == "ask_user":
+            return _handle_ask_user(task_id, kwargs.get("question"))
+
+        # Bot AI notes to self - persist context between calls
+        if action == "add_note":
+            return _handle_add_note(task_id, kwargs.get("note"), kwargs.get("category"))
+
+        if action == "get_notes":
+            return _handle_get_notes(task_id, kwargs.get("category"))
+
+        # Task queue status
+        if action == "queue_status":
+            return _handle_queue_status(kwargs.get("discord_user_id"))
+
         # List branches (uses GitHub API directly)
         if action == "list_branches":
             return await _handle_list_branches(repo)
@@ -277,12 +407,16 @@ async def tool_polly_agent(
             return await _handle_commit(repo, branch, commit_message)
 
         if action == "push":
-            return await _handle_push(repo, branch, task_id, branch_type, branch_description)
+            return await _handle_push(
+                repo, branch, task_id,
+                discord_channel=discord_channel,
+                discord_user_id=kwargs.get("discord_user_id", 0)
+            )
 
         if action == "open_pr":
-            return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body, task_id, branch_type, branch_description)
+            return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body, task_id)
 
-        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
+        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, ask_user, add_note, get_notes, queue_status, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
 
     except Exception as e:
         logger.exception("Error in polly_agent tool")
@@ -370,6 +504,186 @@ def _handle_list_tasks() -> dict:
             "to give branches proper names like feat/xyz, fix/abc instead of thread/12345."
         )
     }
+
+
+def _handle_ask_user(task_id: Optional[str], question: Optional[str]) -> dict:
+    """
+    Set pending confirmation state for a task.
+
+    Bot AI uses this when ccr needs user input or confirmation.
+    The question is stored in task state and shown to user.
+    Only the original task owner can respond.
+    """
+    if not task_id:
+        return {"error": "task_id required for ask_user"}
+
+    if not question:
+        return {"error": "question required for ask_user"}
+
+    if task_id not in _running_tasks:
+        return {"error": f"Task {task_id} not found"}
+
+    task = _running_tasks[task_id]
+    task["pending_confirmation"] = question
+    task["phase"] = "waiting_user"
+    _save_tasks()
+
+    return {
+        "success": True,
+        "message": f"⏳ Waiting for user response to: {question}",
+        "task_owner": task.get("user"),
+        "task_owner_id": task.get("user_id"),
+        "_ai_hint": (
+            "Question has been set. Now send a Discord message with the question.\n"
+            "Wait for the task owner to respond before proceeding.\n"
+            "When they respond, their message will be in thread history."
+        )
+    }
+
+
+def _handle_add_note(task_id: Optional[str], note: Optional[str], category: Optional[str] = None) -> dict:
+    """
+    Add a "note to self" for bot AI that persists between calls.
+
+    Notes help bot AI maintain context across multiple interactions:
+    - Decisions made and why
+    - User preferences discovered
+    - Important context about the task
+    - Things to remember for follow-up
+
+    Categories help organize notes:
+    - "decision": A decision made (e.g., "chose REST over GraphQL because...")
+    - "context": Important background info
+    - "preference": User preference discovered
+    - "todo": Something to do later
+    - "warning": Something to watch out for
+    """
+    if not task_id:
+        return {"error": "task_id required for add_note"}
+
+    if not note:
+        return {"error": "note content required"}
+
+    if task_id not in _running_tasks:
+        return {"error": f"Task {task_id} not found"}
+
+    task = _running_tasks[task_id]
+
+    # Initialize bot_notes if not exists (for old tasks)
+    if "bot_notes" not in task:
+        task["bot_notes"] = []
+
+    # Add the note
+    note_entry = {
+        "content": note,
+        "category": category or "context",
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    task["bot_notes"].append(note_entry)
+
+    # Keep last 20 notes to prevent unbounded growth
+    task["bot_notes"] = task["bot_notes"][-20:]
+
+    _save_tasks()
+
+    return {
+        "success": True,
+        "message": f"📝 Note added ({category or 'context'}): {note[:100]}...",
+        "total_notes": len(task["bot_notes"]),
+    }
+
+
+def _handle_get_notes(task_id: Optional[str], category: Optional[str] = None) -> dict:
+    """
+    Get bot AI notes for a task, optionally filtered by category.
+    """
+    if not task_id:
+        return {"error": "task_id required for get_notes"}
+
+    if task_id not in _running_tasks:
+        return {"error": f"Task {task_id} not found"}
+
+    task = _running_tasks[task_id]
+    notes = task.get("bot_notes", [])
+
+    # Filter by category if specified
+    if category:
+        notes = [n for n in notes if n.get("category") == category]
+
+    if not notes:
+        return {
+            "notes": [],
+            "message": f"No notes found" + (f" for category '{category}'" if category else ""),
+        }
+
+    return {
+        "notes": notes,
+        "total": len(notes),
+        "message": f"Found {len(notes)} note(s)",
+    }
+
+
+def _handle_queue_status(user_id: Optional[int] = None) -> dict:
+    """
+    Get task queue status - shows active tasks, waiting tasks, and queue health.
+
+    If user_id provided, also shows user-specific limits.
+    """
+    queue = get_task_queue()
+    status = queue.get_status()
+
+    # Build message
+    lines = [
+        "**Task Queue Status:**",
+        f"- Active: {status['active']}/{status['max_concurrent']}",
+        f"- Waiting: {status['total_waiting']} (urgent: {status['waiting'].get('urgent', 0)}, "
+        f"normal: {status['waiting'].get('normal', 0)}, background: {status['waiting'].get('background', 0)})",
+        f"- Total processed: {status['total_completed']}/{status['total_submitted']}",
+    ]
+
+    if status['active_tasks']:
+        lines.append("")
+        lines.append("**Active Tasks:**")
+        for t in status['active_tasks'][:5]:
+            lines.append(f"- `{t['task_id'][:8]}...`: {t['description'] or 'No description'}")
+
+    if user_id:
+        user_status = queue.get_user_status(user_id)
+        lines.append("")
+        lines.append(f"**Your Limits:** {user_status['active_count']}/{user_status['max_per_user']} active, "
+                    f"{user_status['waiting_count']} waiting")
+        if not user_status['can_submit']:
+            lines.append("⚠️ At limit - new tasks will be queued")
+
+    return {
+        "status": status,
+        "message": "\n".join(lines),
+    }
+
+
+def clear_pending_confirmation(task_id: str) -> bool:
+    """
+    Clear pending confirmation state after user responds.
+    Called by bot.py when processing user message in a thread with pending confirmation.
+    Returns True if there was a pending confirmation that was cleared.
+    """
+    if task_id not in _running_tasks:
+        return False
+
+    task = _running_tasks[task_id]
+    if task.get("pending_confirmation"):
+        task["pending_confirmation"] = None
+        task["phase"] = "complete"  # Reset to complete
+        _save_tasks()
+        return True
+    return False
+
+
+def get_task_owner_id(task_id: str) -> Optional[int]:
+    """Get the Discord user ID of the task owner for validation."""
+    if task_id not in _running_tasks:
+        return None
+    return _running_tasks[task_id].get("user_id")
 
 
 async def _handle_run_in_sandbox(sandbox_id: Optional[str], command: Optional[str]) -> dict:
@@ -573,7 +887,10 @@ async def _handle_code_task(
             "started_at": datetime.utcnow(),
             "messages": [],
             "user": user_name,
+            "user_id": discord_user_id,  # Track who initiated for confirmation flow
             "thread_id": thread_id,
+            "pending_confirmation": None,  # For dynamic confirmation flow
+            "bot_notes": [],  # Bot AI "notes to self" that persist between calls
         }
         logger.info(f"New task {task_id} (thread_id={thread_id})")
     else:
@@ -583,20 +900,63 @@ async def _handle_code_task(
         _running_tasks[task_id]["messages"].append(f"Continuing with: {task[:50]}...")
         logger.info(f"Continuing task {task_id} (thread_id={thread_id})")
 
-    # Create progress embed if Discord channel available (Claude Code style)
+    # Create progress embed if Discord channel available
+    # Shows live status: todos, files, branch, sub-actions
     embed_manager: Optional[ProgressEmbedManager] = None
     dynamic_todo_indices: dict[str, int] = {}  # Track todo content -> step index
     if channel:
         embed_manager = ProgressEmbedManager(channel)
         try:
             await embed_manager.start(current_action="Setting up environment")
-            await embed_manager.update()
+            # Add standard workflow todos
+            embed_manager.add_step("Setting up environment")
+            embed_manager.add_step("Creating terminal")
+            embed_manager.add_step("Setting up branch")
+            embed_manager.add_step("Running ccr")
+            embed_manager.add_step("Processing results")
+            # Start first step
+            embed_manager.start_step(0)
+            # Fire-and-forget update - don't wait for Discord API
+            asyncio.create_task(embed_manager.update())
         except Exception as e:
             logger.warning(f"Failed to create progress embed: {e}")
             embed_manager = None
 
+    # Task queue - ensures fair scheduling and prevents overload
+    # Submit to queue and wait for slot (immediate if slots available)
+    queue = get_task_queue()
+    queued_task = await queue.submit(
+        task_id=task_id,
+        thread_id=thread_id or 0,
+        user_id=discord_user_id,
+        priority="normal",  # Could be passed as parameter for urgent tasks
+        description=task[:50],
+    )
+
+    # Wait for queue slot if needed
+    if not queued_task.event.is_set():
+        if embed_manager:
+            # Show queue position
+            position = queue._get_queue_position(task_id)
+            embed_manager.set_queue_position(position)
+            embed_manager.set_action(f"Waiting in queue (#{position})")
+            asyncio.create_task(embed_manager.update())  # Fire-and-forget
+        # Wait with timeout (max 5 minutes in queue)
+        try:
+            await asyncio.wait_for(queued_task.event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            return {
+                "error": "Task queued too long - system busy. Try again later.",
+                "queue_status": queue.get_status(),
+            }
+
     try:
         _running_tasks[task_id]["messages"].append(f"Task {task_id} starting")
+
+        # Clear queue position now that we're running
+        if embed_manager:
+            embed_manager.set_queue_position(0)
+            embed_manager.complete_step(0)  # Complete "Setting up environment"
 
         # Get the persistent sandbox
         sandbox = get_persistent_sandbox()
@@ -607,8 +967,9 @@ async def _handle_code_task(
 
         # Get/create terminal for this thread FIRST
         if embed_manager:
+            embed_manager.start_step(1)  # "Creating terminal"
             embed_manager.set_action("Creating terminal")
-            await embed_manager.update()
+            asyncio.create_task(embed_manager.update())  # Fire-and-forget
 
         discord_channel_id = channel.id if channel else 0
         terminal = await sandbox.terminal_manager.get_terminal(
@@ -620,26 +981,47 @@ async def _handle_code_task(
 
         # Create/checkout task branch
         if embed_manager:
+            embed_manager.complete_step(1)  # Complete "Creating terminal"
+            embed_manager.start_step(2)  # "Setting up branch"
             embed_manager.set_action("Setting up branch")
-            await embed_manager.update()
+            asyncio.create_task(embed_manager.update())  # Fire-and-forget
 
-        branch_name = f"thread/{task_id}"
+        # Generate proper branch name from task description
+        # NEVER use thread/* for commits - always use proper names like feat/*, fix/*, etc.
+        branch_name = _generate_branch_name_from_task(task, task_id)
+
+        # Check if this task already has a branch name saved (continuation)
+        if is_continuation and _running_tasks[task_id].get("branch_name"):
+            branch_name = _running_tasks[task_id]["branch_name"]
+            logger.info(f"Reusing existing branch name: {branch_name}")
 
         # Fetch latest and create branch from origin/main
         await terminal.send_command("git fetch origin", timeout=60)
 
-        # Check if branch exists
-        branch_check = await terminal.send_command(f"git branch --list {branch_name}", timeout=10)
+        # Check if branch exists (by saved name or new name)
+        branch_check = await terminal.send_command(f"git branch --list '{branch_name}'", timeout=10)
         if branch_name in branch_check:
-            # Branch exists, checkout and rebase
-            await terminal.send_command(f"git checkout {branch_name}", timeout=30)
+            # Branch exists, checkout
+            await terminal.send_command(f"git checkout '{branch_name}'", timeout=30)
             logger.info(f"Checked out existing branch {branch_name}")
         else:
-            # Create new branch from origin/main
-            await terminal.send_command(f"git checkout -b {branch_name} origin/main", timeout=30)
+            # Create new branch from origin/main with proper name
+            await terminal.send_command(f"git checkout -b '{branch_name}' origin/main", timeout=30)
             logger.info(f"Created new branch {branch_name}")
 
-        # Build ccr command
+        # Save branch name for future calls
+        _running_tasks[task_id]["branch_name"] = branch_name
+
+        # Update embed with branch info
+        if embed_manager:
+            embed_manager.complete_step(2)  # Complete "Setting up branch"
+            embed_manager.set_branch(branch_name, "main")
+            embed_manager.start_step(3)  # "Running ccr"
+            embed_manager.set_action("Running ccr")
+            embed_manager.set_sub_action(task[:60] + "..." if len(task) > 60 else task)
+            asyncio.create_task(embed_manager.update())
+
+        # Build prompt for ccr
         full_prompt = (
             f"IMPORTANT: You are working on branch '{branch_name}'. "
             "Commit your changes to THIS branch. "
@@ -647,13 +1029,26 @@ async def _handle_code_task(
             "Just describe what was changed.\n\n"
             f"{task}"
         )
-        escaped_prompt = shlex.quote(full_prompt)
-        ccr_cmd = f"ccr code -p --dangerously-skip-permissions {escaped_prompt}"
 
-        # Run ccr in terminal
-        if embed_manager:
-            embed_manager.set_action("Running ccr")
-            await embed_manager.update()
+        # Run ccr with -p flag
+        # Use --session-id for NEW sessions, --resume for continuations
+        # This ensures each Discord thread has its own isolated ccr conversation context
+        escaped_prompt = shlex.quote(full_prompt)
+
+        # Generate a deterministic UUID from thread_id for ccr session isolation
+        import hashlib
+        session_uuid = str(uuid.UUID(hashlib.md5(f"polly-{task_id}".encode()).hexdigest()))
+
+        if is_continuation:
+            # Resume existing session - maintains ccr conversation context!
+            ccr_flags = f"-p --dangerously-skip-permissions --resume {session_uuid}"
+            logger.info(f"Resuming ccr session {session_uuid} for task {task_id}")
+        else:
+            # Create new session with deterministic ID
+            ccr_flags = f"-p --dangerously-skip-permissions --session-id {session_uuid}"
+            logger.info(f"Creating ccr session {session_uuid} for task {task_id}")
+
+        ccr_cmd = f"ccr code {ccr_flags} {escaped_prompt}"
 
         logger.info(f"Running ccr: {task[:100]}...")
         start_time = asyncio.get_running_loop().time()
@@ -663,12 +1058,33 @@ async def _handle_code_task(
         duration = asyncio.get_running_loop().time() - start_time
         logger.info(f"ccr completed in {duration:.1f}s, output {len(output)} bytes")
 
-        # Parse results from output
-        todos = parse_todos_from_output(output)
+        # Update embed - ccr done, now processing
+        if embed_manager:
+            embed_manager.complete_step(3)  # Complete "Running ccr"
+            embed_manager.start_step(4)  # "Processing results"
+            embed_manager.set_action("Processing results")
+            embed_manager.set_sub_action("Analyzing changes...")
+            asyncio.create_task(embed_manager.update())
 
-        # Get files changed
-        diff_result = await terminal.send_command("git diff --name-only HEAD~1 2>/dev/null || echo ''", timeout=30)
-        files_changed = [f.strip() for f in diff_result.split('\n') if f.strip() and not f.startswith('fatal')]
+        # PARALLEL: Parse todos and get git diff simultaneously
+        # These are independent operations - run them concurrently for speed
+        async def get_files_changed():
+            diff_result = await terminal.send_command(
+                "git diff --name-only origin/main...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || echo ''",
+                timeout=30
+            )
+            return [f.strip() for f in diff_result.split('\n') if f.strip() and not f.startswith('fatal')]
+
+        # Run CPU-bound todo parsing and IO-bound git diff in parallel
+        todos_task = asyncio.get_running_loop().run_in_executor(None, parse_todos_from_output, output)
+        diff_task = get_files_changed()
+
+        todos, files_changed = await asyncio.gather(todos_task, diff_task)
+
+        # Update embed with files changed
+        if embed_manager:
+            embed_manager.set_files(files_changed)
+            asyncio.create_task(embed_manager.update())
 
         # Build result object (compatible with ClaudeCodeResult)
         class SimpleResult:
@@ -683,30 +1099,21 @@ async def _handle_code_task(
 
         result = SimpleResult()
 
-        # Final embed update with all todos from result
+        # Final embed update
         if embed_manager:
-            # Add any final todos not caught during streaming
-            for todo in result.todos:
-                if todo.content not in dynamic_todo_indices:
-                    idx = embed_manager.add_step(todo.content)
-                    dynamic_todo_indices[todo.content] = idx
+            embed_manager.complete_step(4)  # Complete "Processing results"
 
-                idx = dynamic_todo_indices[todo.content]
-                if todo.status == "completed":
-                    embed_manager.complete_step(idx)
-                elif todo.status == "in_progress":
-                    embed_manager.complete_step(idx)  # Mark as done at end
-                elif todo.status == "failed":
-                    embed_manager.fail_step(idx)
-
-            # Final action message
+            # Final status message
             if result.success:
                 files_msg = f"{len(result.files_changed)} file(s) changed" if result.files_changed else "No changes"
                 embed_manager.set_action(files_msg)
+                embed_manager.set_sub_action("")  # Clear sub-action
             else:
                 embed_manager.set_action(result.error[:50] if result.error else "Task failed")
 
-            await embed_manager.update()
+            # Mark complete (changes color to green/red)
+            embed_manager.mark_complete(result.success)
+            await embed_manager.update(force=True)
             # Store embed_manager for later updates (e.g., when PR is created)
             _running_tasks[task_id]["embed_manager"] = embed_manager
 
@@ -717,8 +1124,32 @@ async def _handle_code_task(
         _running_tasks[task_id]["files_changed"] = result.files_changed
         _running_tasks[task_id]["user"] = user_name
 
-        # Save to disk for persistence across restarts
-        _save_tasks()
+        # Store ccr interaction history for context in follow-up calls
+        # This is the SHORT-TERM MEMORY between bot AI and ccr
+        #
+        # STRUCTURED SUMMARY: Instead of raw truncated output, we extract
+        # key information that helps bot AI understand what happened:
+        # - What was the task?
+        # - What files were changed and how?
+        # - Was it successful?
+        # - Key decisions/actions taken (extracted from output)
+        #
+        # PARALLEL: Build summary in background thread (CPU-bound string processing)
+        loop = asyncio.get_running_loop()
+        ccr_interaction = await loop.run_in_executor(
+            None,
+            _build_ccr_interaction_summary,
+            task, result.output, result.files_changed, result.success, result.todos
+        )
+
+        # Append to history (keep last 10 interactions for richer context)
+        if "ccr_history" not in _running_tasks[task_id]:
+            _running_tasks[task_id]["ccr_history"] = []
+        _running_tasks[task_id]["ccr_history"].append(ccr_interaction)
+        _running_tasks[task_id]["ccr_history"] = _running_tasks[task_id]["ccr_history"][-10:]
+
+        # Save to disk in background - fire-and-forget
+        loop.run_in_executor(None, _save_tasks)
 
         # Include todos in response
         todos_summary = [{"content": t.content, "status": t.status} for t in result.todos]
@@ -747,22 +1178,20 @@ async def _handle_code_task(
                 "3. ccr NEEDS INFO → Use YOUR tools (code_search, github_issue) to get it, call polly_agent again\n"
                 "4. ccr ERROR → Explain the ACTUAL error FROM ccr_response\n\n"
                 "TASK IS NOT DONE until user confirms.\n\n"
-                "🔑 SIMPLIFIED: Thread ID is the universal key!\n"
-                "- All follow-ups from this Discord thread AUTOMATICALLY use the same git branch\n"
-                "- No need to pass task_id - it's derived from thread_id automatically\n"
-                "- Git branch IS the state - all previous changes are committed and visible\n"
-                "- Terminal persists per thread - ccr keeps conversation context across calls!\n"
-                "- If ccr auto-compacts (long session), new session inherits context in same terminal\n\n"
-                "TO CREATE PR (when user confirms) - USE PROPER BRANCH NAMING:\n"
-                "polly_agent(action='open_pr', pr_title='...', pr_body='...',\n"
-                "           branch_type='feat|fix|docs|refactor|chore', branch_description='short-description')\n"
-                "Branch types: feat (new feature), fix (bug fix), docs (documentation),\n"
-                "              refactor (code refactor), chore (maintenance), test, style, perf, ci\n"
-                "Example: branch_type='feat', branch_description='add dark mode toggle'\n"
-                "         → creates branch: feat/add-dark-mode-toggle\n\n"
+                "🔑 BRANCH NAMING: Branch is auto-generated with proper name (feat/*, fix/*, etc.)\n"
+                f"- Current branch: {result.branch_name}\n"
+                "- Follow-ups from this thread automatically use the same branch\n"
+                "- No need to specify branch_type - it's inferred from task description\n\n"
+                "TO CREATE PR (when user confirms):\n"
+                "polly_agent(action='open_pr', pr_title='...', pr_body='...')\n"
+                "Branch name is already set properly - just provide PR title and body.\n\n"
                 "TO CONTINUE WORK (follow-up task) - just call polly_agent again:\n"
                 "polly_agent(action='task', task='also add tests')\n"
-                "The thread_id is auto-injected, so ccr continues on the same branch with full context."
+                "The thread_id is auto-injected, so ccr continues on the same branch with full context.\n\n"
+                "📝 NOTES TO SELF - Save important context for later:\n"
+                "polly_agent(action='add_note', note='User prefers TypeScript', category='preference')\n"
+                "Categories: decision, warning, todo, preference, context\n"
+                "Notes persist across calls and appear in your context automatically!"
             )
         }
 
@@ -795,6 +1224,8 @@ async def _handle_code_task(
         }
 
     finally:
+        # Complete the queue task (release slot for next task)
+        await queue.complete(task_id)
         asyncio.create_task(_cleanup_task(task_id, delay=300))
 
 
@@ -1045,6 +1476,59 @@ async def _handle_commit(repo: str, branch: str, message: Optional[str]) -> dict
     }
 
 
+def _generate_branch_name_from_task(task: str, task_id: str) -> str:
+    """
+    Generate a proper branch name from task description.
+
+    Analyzes the task to determine type (feat/fix/docs/etc) and creates
+    a descriptive slug. NEVER returns thread/* or task/* names.
+
+    Examples:
+        "fix the login bug" -> "fix/login-bug"
+        "add dark mode toggle" -> "feat/add-dark-mode-toggle"
+        "update README" -> "docs/update-readme"
+    """
+    task_lower = task.lower()
+
+    # Determine branch type from task keywords
+    if any(word in task_lower for word in ["fix", "bug", "error", "issue", "broken", "crash", "repair"]):
+        branch_type = "fix"
+    elif any(word in task_lower for word in ["doc", "readme", "comment", "documentation", "jsdoc", "docstring"]):
+        branch_type = "docs"
+    elif any(word in task_lower for word in ["refactor", "cleanup", "clean up", "reorganize", "restructure"]):
+        branch_type = "refactor"
+    elif any(word in task_lower for word in ["test", "spec", "testing", "unit test", "e2e"]):
+        branch_type = "test"
+    elif any(word in task_lower for word in ["style", "format", "lint", "prettier", "eslint"]):
+        branch_type = "style"
+    elif any(word in task_lower for word in ["perf", "performance", "optimize", "speed", "fast"]):
+        branch_type = "perf"
+    elif any(word in task_lower for word in ["ci", "workflow", "action", "deploy", "pipeline"]):
+        branch_type = "ci"
+    elif any(word in task_lower for word in ["chore", "dependency", "upgrade", "update package", "bump"]):
+        branch_type = "chore"
+    else:
+        branch_type = "feat"  # Default to feature
+
+    # Generate slug from task description
+    # Take first 6-8 meaningful words, skip common filler words
+    skip_words = {"the", "a", "an", "to", "in", "on", "at", "for", "of", "and", "or", "is", "are", "it", "this", "that", "please", "can", "you", "i", "we", "should", "could", "would", "need"}
+
+    words = re.sub(r'[^a-z0-9\s]', '', task_lower).split()
+    meaningful_words = [w for w in words if w not in skip_words and len(w) > 1][:6]
+
+    if meaningful_words:
+        slug = "-".join(meaningful_words)
+    else:
+        # Fallback to task_id suffix
+        slug = f"task-{task_id[-8:]}"
+
+    # Ensure slug isn't too long
+    slug = slug[:50].rstrip('-')
+
+    return f"{branch_type}/{slug}"
+
+
 def _generate_branch_name(
     branch_type: Optional[str],
     branch_description: Optional[str],
@@ -1071,7 +1555,6 @@ def _generate_branch_name(
     # Generate description slug
     if branch_description:
         # Convert to slug: lowercase, replace spaces with dashes, remove special chars
-        import re
         slug = branch_description.lower().strip()
         slug = re.sub(r'[^a-z0-9\s-]', '', slug)  # Remove special chars
         slug = re.sub(r'\s+', '-', slug)  # Spaces to dashes
@@ -1088,21 +1571,19 @@ async def _handle_push(
     repo: str,
     branch: str,
     task_id: Optional[str] = None,
-    branch_type: Optional[str] = None,
-    branch_description: Optional[str] = None
+    discord_channel=None,
+    discord_user_id: int = 0,
 ) -> dict:
     """
     Push the sandbox branch to GitHub using GitHub App credentials.
 
-    ccr works in the Docker sandbox - changes are committed there.
-    This function pushes those commits to GitHub using the App's installation token.
+    Uses the SAME terminal as the task to maintain ccr session continuity.
 
     If there are uncommitted changes in the sandbox, they are automatically
     committed before pushing to ensure all work is included.
 
-    Branch naming:
-    - If branch_type is provided, renames task/* branch to proper name (e.g., feat/*, fix/*)
-    - This rename happens locally before push, so GitHub sees the proper branch name
+    Note: Branches are created with proper names (feat/*, fix/*, etc.) from the start.
+    This function will reject any thread/* or task/* branches.
     """
     from ..sandbox import get_persistent_sandbox
 
@@ -1117,6 +1598,17 @@ async def _handle_push(
     if task_id and task_id in _running_tasks:
         actual_branch = _running_tasks[task_id].get("branch_name", branch)
 
+    # Get the SAME terminal used for the task - maintains ccr session continuity
+    terminal = None
+    if task_id:
+        discord_channel_id = discord_channel.id if discord_channel else 0
+        terminal = await sandbox.terminal_manager.get_terminal(
+            task_id,
+            user_id=discord_user_id,
+            channel_id=discord_channel_id,
+        )
+        logger.info(f"Using existing terminal for task {task_id} for push operation")
+
     # Ensure we're on the correct branch before checking for changes
     checkout_result = await sandbox.execute(
         f"cd /workspace/pollinations && git checkout {actual_branch}",
@@ -1125,7 +1617,20 @@ async def _handle_push(
     if checkout_result.exit_code != 0:
         logger.warning(f"Could not checkout branch {actual_branch}: {checkout_result.stderr}")
 
-    # CRITICAL: Check for uncommitted changes and commit them before push
+    # CRITICAL: Get ALL files changed on this branch vs origin/main BEFORE any operations
+    # This shows what will ACTUALLY be pushed, not just uncommitted files
+    branch_diff_result = await sandbox.execute(
+        f"cd /workspace/pollinations && git diff --name-only origin/main...{actual_branch} 2>/dev/null || echo ''",
+        as_coder=True
+    )
+    files_on_branch = [f.strip() for f in branch_diff_result.stdout.strip().split('\n') if f.strip()]
+    logger.info(f"Files changed on branch {actual_branch} vs origin/main: {files_on_branch}")
+
+    # Warn if no changes on branch
+    if not files_on_branch:
+        logger.warning(f"No file changes detected on branch {actual_branch} vs origin/main!")
+
+    # Check for uncommitted changes and commit them before push
     # This handles the case where ccr edited files but didn't commit
     status_result = await sandbox.execute(
         "cd /workspace/pollinations && git status --porcelain",
@@ -1162,59 +1667,14 @@ async def _handle_push(
     else:
         uncommitted_files = []  # No uncommitted files
 
-    # Generate proper branch name - REQUIRED for push
-    # We never push thread/* or task/* branches directly to GitHub
+    # Branches are now created with proper names from the start (feat/*, fix/*, etc.)
+    # No renaming needed - just push the branch as-is
     target_branch = actual_branch
 
-    # Auto-infer branch_type from task description if not provided
-    if not branch_type and (actual_branch.startswith("task/") or actual_branch.startswith("thread/")):
-        # Try to infer from task description
-        task_desc_lower = ""
-        if task_id and task_id in _running_tasks:
-            task_desc_lower = _running_tasks[task_id].get("task", "").lower()
-
-        # Infer type from common keywords
-        if any(word in task_desc_lower for word in ["fix", "bug", "error", "issue", "broken", "crash"]):
-            branch_type = "fix"
-        elif any(word in task_desc_lower for word in ["doc", "readme", "comment", "documentation"]):
-            branch_type = "docs"
-        elif any(word in task_desc_lower for word in ["refactor", "cleanup", "clean up", "reorganize"]):
-            branch_type = "refactor"
-        elif any(word in task_desc_lower for word in ["test", "spec", "testing"]):
-            branch_type = "test"
-        elif any(word in task_desc_lower for word in ["style", "format", "lint"]):
-            branch_type = "style"
-        elif any(word in task_desc_lower for word in ["perf", "performance", "optimize", "speed"]):
-            branch_type = "perf"
-        else:
-            branch_type = "feat"  # Default to feature
-
-        # Use task description as branch_description if not provided
-        if not branch_description and task_id and task_id in _running_tasks:
-            branch_description = _running_tasks[task_id].get("task", "update")[:50]
-
-        logger.info(f"Auto-inferred branch_type='{branch_type}' from task description")
-
-    proper_name = _generate_branch_name(branch_type, branch_description, task_id)
-
-    if proper_name and (actual_branch.startswith("task/") or actual_branch.startswith("thread/")):
-        # Rename branch locally before pushing (task/* or thread/* → feat/*, fix/*, etc.)
-        logger.info(f"Renaming branch {actual_branch} → {proper_name}")
-
-        rename_result = await sandbox.execute(
-            f"cd /workspace/pollinations && git branch -m {actual_branch} {proper_name}",
-            as_coder=True
-        )
-
-        if rename_result.exit_code == 0:
-            target_branch = proper_name
-            # Update task tracking with new branch name
-            if task_id and task_id in _running_tasks:
-                _running_tasks[task_id]["branch_name"] = proper_name
-                _save_tasks()
-            logger.info(f"Branch renamed to {proper_name}")
-        else:
-            logger.warning(f"Failed to rename branch: {rename_result.stderr}, using original name")
+    # Safety check: reject any thread/* or task/* branches that somehow slipped through
+    if target_branch.startswith("thread/") or target_branch.startswith("task/"):
+        logger.error(f"Attempted to push invalid branch name: {target_branch}")
+        return {"error": f"Cannot push branch '{target_branch}'. Branch names must follow conventional format (feat/*, fix/*, docs/*, etc.)"}
 
     logger.info(f"Pushing branch {target_branch} to origin using GitHub App...")
 
@@ -1226,12 +1686,17 @@ async def _handle_push(
         msg = f"✅ Pushed branch `{target_branch}` to GitHub"
         if uncommitted_files:
             msg += f" (auto-committed {len(uncommitted_files)} file(s))"
+        if files_on_branch:
+            msg += f"\n📁 Files changed: {', '.join(files_on_branch[:5])}"
+            if len(files_on_branch) > 5:
+                msg += f" (+{len(files_on_branch) - 5} more)"
 
         return {
             "success": True,
             "branch": target_branch,
             "original_branch": actual_branch if actual_branch != target_branch else None,
             "files_committed": uncommitted_files if uncommitted_files else None,
+            "files_on_branch": files_on_branch,  # ALL files changed vs main
             "message": msg
         }
     else:
@@ -1251,8 +1716,6 @@ async def _handle_open_pr(
     title: Optional[str],
     body: Optional[str],
     task_id: Optional[str] = None,
-    branch_type: Optional[str] = None,
-    branch_description: Optional[str] = None
 ) -> dict:
     """
     Create a pull request.
@@ -1260,9 +1723,7 @@ async def _handle_open_pr(
     This first pushes the sandbox branch to GitHub (if not already pushed),
     then creates the PR via GitHub API.
 
-    Branch naming:
-    - If branch_type provided, renames task/* to proper name before pushing
-    - Example: branch_type="feat", branch_description="dark mode" -> feat/dark-mode
+    Note: Branches are created with proper names (feat/*, fix/*, etc.) from the start.
     """
     if not title:
         return {"error": "pr_title parameter is required"}
@@ -1274,9 +1735,9 @@ async def _handle_open_pr(
     if task_id and task_id in _running_tasks:
         actual_branch = _running_tasks[task_id].get("branch_name", head_branch)
 
-    # First, push the branch to GitHub (this handles renaming if branch_type provided)
+    # First, push the branch to GitHub
     logger.info(f"Pushing branch {actual_branch} before creating PR...")
-    push_result = await _handle_push(repo, actual_branch, task_id, branch_type, branch_description)
+    push_result = await _handle_push(repo, actual_branch, task_id)
 
     if not push_result.get("success"):
         return {"error": f"Failed to push branch before PR: {push_result.get('error', 'Unknown error')}"}

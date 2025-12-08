@@ -497,39 +497,31 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Code agent for ACTUAL CODE CHANGES ONLY. Do NOT use for questions, summaries, searches, or lookups.
+            "description": """Code agent for ACTUAL CODE CHANGES. Returns ccr_response with what was done.
 
-**WHEN TO USE**: User explicitly asks to WRITE/EDIT/MODIFY code, implement features, fix bugs BY CODING, create branches, commit changes, or open PRs.
+Actions:
+- task: Run coding task (pass COMPLETE context). Returns ccr_response.
+- push: Push changes to GitHub (after task completed)
+- open_pr: Create PR (after task completed)
+- status: Check task status
+- list_tasks: List all tasks
+- run_in_sandbox/read_sandbox_file/write_sandbox_file: Sandbox ops
+- list_branches/create_branch/delete_branch: Branch ops [admin]
+- read_file/list_files/edit_file: File ops [admin for edit]
+- commit: Commit changes
 
-**WHEN NOT TO USE**: Searching code, reading files for info, summarizing changes, answering questions, looking up issues/PRs. Use github_issue, github_pr, code_search, or git log instead.
-
-**DYNAMIC WORKFLOW**: task → read ccr_response → decide next step → update embed → repeat or finish
-
-Autonomous Tasks:
-- task: Coding task (ACTUAL CODE CHANGES). Pass COMPLETE context. Returns ccr_response, sandbox_id, task_id.
-- status: Check task status (task_id)
-- update_embed: Update Discord embed (task_id, status, finish=true to close)
-
-Sandbox Operations:
-- run_in_sandbox: Run command (sandbox_id, command)
-- read_sandbox_file/write_sandbox_file: File ops (sandbox_id, file_path)
-- destroy_sandbox: Cleanup (sandbox_id, task_id) [confirm]
-
-Git Operations [admin]:
-- list_branches/create_branch/delete_branch: Branch management [confirm for delete]
-- read_file/list_files: Read repo files (prefer code_search for lookups)
-- edit_file: Edit file (file_path, file_content)
-- commit/push: Save changes (commit_message)
-- open_pr: Create PR (pr_title, pr_body, base_branch)
-
-Read ops always safe. Write ops require admin.""",
+⚠️ CRITICAL: After task completes, use push/open_pr for follow-ups, NOT task again!""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["task", "status", "update_embed", "run_in_sandbox", "read_sandbox_file", "write_sandbox_file", "destroy_sandbox", "list_branches", "create_branch", "delete_branch", "read_file", "list_files", "edit_file", "commit", "push", "open_pr"],
-                        "description": "Action to perform"
+                        "enum": ["task", "status", "list_tasks", "ask_user", "update_embed", "run_in_sandbox", "read_sandbox_file", "write_sandbox_file", "destroy_sandbox", "list_branches", "create_branch", "delete_branch", "read_file", "list_files", "edit_file", "commit", "push", "open_pr"],
+                        "description": "Action to perform. ask_user: Ask task owner for confirmation/input"
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": "Question to ask user (for ask_user action)"
                     },
                     "sandbox_id": {
                         "type": "string",
@@ -678,6 +670,92 @@ def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> lis
     return tools
 
 
+# =============================================================================
+# ADMIN ACTION FILTERING - Hide admin actions from non-admin users
+# =============================================================================
+
+# Admin actions per tool - these lines will be removed from descriptions for non-admins
+ADMIN_ACTIONS = {
+    "github_issue": {
+        "close", "reopen", "edit", "label", "unlabel", "assign", "unassign",
+        "milestone", "lock", "link", "create_sub_issue", "add_sub_issue", "remove_sub_issue"
+    },
+    "github_pr": {
+        "request_review", "remove_reviewer", "approve", "request_changes", "merge",
+        "update", "create", "convert_to_draft", "ready_for_review", "update_branch",
+        "inline_comment", "suggest", "resolve_thread", "unresolve_thread",
+        "enable_auto_merge", "disable_auto_merge", "close", "reopen"
+    },
+    "github_project": {
+        "add", "remove", "set_status", "set_field"
+    },
+    # polly_agent is entirely admin-only, handled separately
+}
+
+
+def filter_admin_actions_from_tools(tools: list, is_admin: bool) -> list:
+    """
+    Filter admin actions from tool descriptions for non-admin users.
+
+    This prevents the AI from even knowing about admin actions, so:
+    1. It won't try to call them
+    2. It won't suggest them to users
+    3. Users can't jailbreak to access them
+
+    Args:
+        tools: List of tool definitions
+        is_admin: Whether user is admin
+
+    Returns:
+        Tools with admin actions removed from descriptions for non-admins
+    """
+    if is_admin:
+        return tools  # Admins see everything
+
+    import copy
+    filtered_tools = []
+
+    for tool in tools:
+        tool_name = tool.get("function", {}).get("name", "")
+
+        # Skip entirely admin-only tools
+        if tool_name == "polly_agent":
+            continue
+
+        # Check if this tool has admin actions to filter
+        if tool_name not in ADMIN_ACTIONS:
+            filtered_tools.append(tool)
+            continue
+
+        # Deep copy to avoid modifying original
+        tool_copy = copy.deepcopy(tool)
+        description = tool_copy["function"]["description"]
+
+        # Remove lines containing [admin] marker
+        lines = description.split("\n")
+        filtered_lines = [
+            line for line in lines
+            if "[admin]" not in line.lower()
+        ]
+        tool_copy["function"]["description"] = "\n".join(filtered_lines)
+
+        # Also filter the action enum if present
+        params = tool_copy["function"].get("parameters", {})
+        props = params.get("properties", {})
+        action_prop = props.get("action", {})
+
+        if "enum" in action_prop:
+            admin_actions = ADMIN_ACTIONS.get(tool_name, set())
+            action_prop["enum"] = [
+                a for a in action_prop["enum"]
+                if a not in admin_actions
+            ]
+
+        filtered_tools.append(tool_copy)
+
+    return filtered_tools
+
+
 # NOTE: Admin action checks handled in bot.py. polly_agent write ops require admin, read ops are public.
 
 # Risky actions - AI uses judgment but these are hints for high-risk ops
@@ -788,131 +866,75 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: b
 # TOOL-BASED SYSTEM PROMPT - AI has FULL AUTONOMY
 # =============================================================================
 
-TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI.
+TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Time: {current_utc}
 
-## Time: {current_utc}
-
-## Context:
 {repo_info}
 
-## Your Tools (USE THEM - if listed, you HAVE it):
-- `github_overview` - Get repo summary (issues, labels, milestones, projects) in ONE call
-- `github_issue` - Issues: get, search, create, comment, close, label, assign, sub-issues
-- `github_pr` - PRs: get, list, review, approve, merge, inline comments, suggestions
-- `github_project` - Projects V2: list, view, add items, set status/fields
-- `polly_agent` - **Coding agent for ACTUAL CODE CHANGES** (implement, edit code, create branches, commit, open PRs)
-- `github_custom` - Raw data fetching for custom analysis (commits, history, stats)
-- `web_search` - Real-time web search (mode="fast" or "reasoning")
-- `code_search` - Semantic code search by meaning
+## Tools
+- `github_overview` - Repo summary (issues, labels, milestones, projects)
+- `github_issue` - Issues: get, search, create, comment, close, label, assign
+- `github_pr` - PRs: get, list, review, approve, merge, inline comments
+- `github_project` - Projects V2: list, view, add items, set status
+- `polly_agent` - **Code agent** (implement, edit code, create branches, PRs)
+- `github_custom` - Raw data (commits, history, stats)
+- `web_search` - Web search (mode="fast"|"reasoning")
+- `code_search` - Semantic code search
 
-## Core Behaviors:
+## Behaviors
 
-**1. PARALLEL CALLS (for independent lookups):**
-Call multiple independent tools together in ONE response.
-Examples:
-- "compare issues 100 and 200" → github_issue(get #100) + github_issue(get #200) together
-- "search for auth bugs and check PR 50" → github_issue(search) + github_pr(get #50) together
-- "what's in the repo?" → github_overview + code_search in ONE call
-- "summarize recent changes" → github_custom(action="commits") - NOT polly_agent!
+**PARALLEL CALLS**: Call independent tools together.
+- "compare #100 and #200" → github_issue(get 100) + github_issue(get 200)
+- "what's in the repo?" → github_overview (NOT polly_agent)
 
-**2. PROACTIVE (fetch, don't ask):**
-User mentions #123? → Call tool to GET it, don't ask for details.
-Need file contents for info? → Use code_search or github_pr(get files).
-Only ask when info truly doesn't exist.
+**PROACTIVE**: Fetch data, don't ask. User mentions #123? GET it.
 
-**3. WHEN TO USE POLLY_AGENT vs OTHER TOOLS:**
-✅ USE polly_agent: "implement this feature", "write code to fix X", "create a branch", "commit changes", "open a PR"
-✅ ALSO USE polly_agent: Follow-up questions about work IT just did (e.g., "summarize your changes" after coding task)
-❌ DON'T use polly_agent for NEW/UNRELATED lookups: "what changed in repo last week", "search for auth code", "show commits"
-Use judgment: If user is asking about polly_agent's OWN recent work → use polly_agent(status). If asking about repo in general → use github_custom/code_search.
+**polly_agent = CODE CHANGES ONLY**
+✅ USE: "implement", "write code", "fix this", "create branch", "open PR"
+❌ DON'T: "search code", "show commits", "summarize changes" → use other tools
 
-**4. POLLY_AGENT WORKFLOW - CRITICAL RULES:**
+## polly_agent Rules
 
-⚠️ **WHEN polly_agent IS CALLED, YOU MUST FOLLOW THESE RULES EXACTLY:**
+**1. GATHER CONTEXT FIRST**
+Before `action="task"`, get info with other tools:
+- "fix #5735" → github_issue(get 5735) FIRST, then polly_agent with full details
 
-**RULE 1: GATHER CONTEXT FIRST**
-Before calling polly_agent(action="task"), gather ALL needed context with your other tools:
-- "fix issue #5735" → FIRST call github_issue(get #5735), THEN pass full issue details to polly_agent
-- "implement feature X" → FIRST call code_search to find relevant code, THEN pass findings to polly_agent
-- DO NOT call polly_agent with vague tasks - ccr needs COMPLETE information
+**2. PASS COMPLETE INFO**
+polly_agent(action="task", task="Fix #5735: [FULL DESCRIPTION]\\nFiles: src/x.py\\nProblem: [exact issue]")
 
-**RULE 2: INCLUDE FULL CONTEXT IN TASK**
-```
-polly_agent(action="task", task="Fix issue #5735: [FULL ISSUE DESCRIPTION]
+**3. RESPONSE = ccr_response**
+After polly_agent returns, your message MUST quote ccr_response. Never say "I cannot access".
 
-Files to modify:
-- src/auth/login.py (authentication logic)
-- src/utils/token.py (token validation)
+**4. FOLLOW-UPS: push/open_pr, NOT task!** ⚠️
+After ccr completed changes:
+- "make a branch" / "push it" → `action="push"` (NOT task!)
+- "open a PR" → `action="open_pr"`
 
-Problem: [exact error/issue]
-Expected: [what should happen]
-")
-```
+❌ WRONG: polly_agent(action="task") after changes done - re-runs everything!
+✅ RIGHT: polly_agent(action="push") - pushes existing changes
 
-**RULE 3: YOUR RESPONSE = CCR'S OUTPUT (NOTHING ELSE)**
-After polly_agent returns:
-- READ the ccr_response field - this is what ccr ACTUALLY did
-- Your Discord message MUST be based ONLY on ccr_response
-- DO NOT add your own speculation or "I cannot access" nonsense
-- DO NOT send a message BEFORE getting ccr_response back
+**5. CONFIRM DESTRUCTIVE OPS**
+merge, delete_branch, lock, close PR → confirm first.
 
-❌ WRONG: "I'll work on fixing that bug..." (before ccr_response)
-❌ WRONG: "I cannot directly access your repository" (after ccr succeeded)
-✅ RIGHT: "ccr modified 3 files: [list from ccr_response]. Changes: [summary from ccr_response]"
+**6. DYNAMIC STATE - ASK USER WHEN NEEDED**
+If ccr needs clarification or you need confirmation:
+- Call `polly_agent(action='ask_user', question='...')` to set pending confirmation
+- Then send a Discord message with the question
+- WAIT for user response before proceeding (only task owner can respond)
+- User's response will be in thread history on next call
 
-**RULE 4: TASK IS NOT DONE UNTIL USER CONFIRMS**
-After ccr completes:
-- Report what ccr did (from ccr_response)
-- Ask user: "Ready to create a PR?" or "Want me to push these changes?"
-- KEEP the task context - if user says "yes", you call polly_agent(action="open_pr")
-- KEEP the task context - if user asks followup, you call polly_agent with same task_id
-- ONLY call polly_agent(action="update_embed", finish=true) when user explicitly confirms task is done
-
-**RULE 5: IF CCR NEEDS MORE INFO**
-If ccr_response says it needs more information:
-- USE your tools (code_search, github_issue, etc.) to get that info
-- Call polly_agent AGAIN with the additional context
-- Keep iterating until task is complete
-
-**RULE 6: ALWAYS REUSE task_id IN SAME THREAD (CRITICAL!)**
-⚠️ This is the MOST IMPORTANT rule for efficiency:
-- First polly_agent(action="task") returns a `task_id` in the response
-- For ALL subsequent calls in the SAME Discord thread, you MUST pass that task_id
-- This ensures: same branch reused, same ccr session, context preserved
-- Without task_id: creates NEW branch, loses context, wastes resources
-
-Example flow:
-1. User: "update the readme" → polly_agent(action="task", task="...") → ccr makes changes on local branch
-2. User: "now push it" → polly_agent(action="push") ← thread_id auto-injected, reuses same branch!
-3. User: "open a PR" → polly_agent(action="open_pr", pr_title="...", pr_body="...")
-
-⚠️ "open a branch" or "create a branch" usually means PUSH existing changes (not action="task"):
-- Changes are ALREADY on a local branch (thread/123456)
-- User wants to push to GitHub → use action="push"
-- If user wants PR → use action="open_pr"
-
-❌ WRONG: Calling action="task" again when user says "open a branch" (re-runs the whole task!)
-✅ RIGHT: Use action="push" or action="open_pr" for follow-up git operations
-
-**You DO have code modification ability via polly_agent.** The changes are REAL!
-
-**5. CONFIRM DESTRUCTIVE/RISKY OPS (admins only):**
-Ask confirmation for destructive actions: merge, delete_branch, lock, close PR, bulk edits, etc.
-Use judgment - if it's hard to undo or high-impact, confirm first. Low-risk ops: just do it.
-Only original requester can confirm (not other users).
-
-## Response Style:
-- Discord: Concise, bullet points, no fluff
-- GitHub: Clear, structured (Problem → Steps → Expected → Actual)
-- Links: Always use `[#123](<url>)` format (angle brackets suppress embeds)
-- Multilingual OK, but GitHub content in English
-
-## Hard Rules:
-- Never fabricate data or issue numbers
-- Check duplicates before creating issues
-- GitHub mentions: use backticks (`username`), not @
-- Discord username ≠ GitHub username - ask if needed
-- On errors: explain clearly, offer alternatives"""
+## Style
+- Concise bullet points
+- **ALWAYS naturally embed ALL links** in responses using Discord markdown:
+  - Format: `[visible text](<url>)` (angle brackets around URL are REQUIRED)
+  - Examples:
+    - "The [Issue #123](<https://github.com/org/repo/issues/123>) is still open"
+    - "I found [PR #456](<https://github.com/org/repo/pull/456>) that fixes this"
+    - "Check the [README](<https://github.com/org/repo#readme>) for setup"
+  - When mentioning multiple items, embed ALL of them:
+    - "Looking at [#12](<url>), [#34](<url>), and [#56](<url>), they all relate to..."
+  - NEVER post raw URLs - always embed them with descriptive text
+- Never fabricate data
+- GitHub mentions: `username` not @"""
 
 def get_tool_system_prompt() -> str:
     """Get the tool system prompt with current UTC time."""

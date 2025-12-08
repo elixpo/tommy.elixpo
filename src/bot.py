@@ -17,7 +17,12 @@ from .services.pollinations import pollinations_client
 from .services.subscriptions import subscription_manager, init_notifier
 from .services.code_agent.tools import TOOL_HANDLERS as CODE_AGENT_HANDLERS
 from .services.code_agent.sandbox import get_persistent_sandbox
-from .services.code_agent.embed_builder import StaleTerminalView
+from .services.code_agent.embed_builder import (
+    StaleTerminalView,
+    PersistentCloseTerminalView,
+    PersistentStaleTerminalView,
+    set_sandbox_getter,
+)
 from .services.webhook_server import start_webhook_server, stop_webhook_server
 
 logger = logging.getLogger(__name__)
@@ -117,17 +122,22 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
         })
 
     try:
-        async for msg in thread.history(limit=limit, oldest_first=True):
+        # Fetch most recent messages (newest first), then reverse to chronological order
+        # This ensures we get the LATEST conversation context, not oldest messages
+        fetched = []
+        async for msg in thread.history(limit=limit):  # newest first (default)
             if msg.author.bot:
-                messages.append({
+                fetched.append({
                     "role": "assistant",
                     "content": msg.content
                 })
             else:
-                messages.append({
+                fetched.append({
                     "role": "user",
                     "content": f"[{msg.author.name}]: {msg.content}"
                 })
+        # Reverse to chronological order (oldest to newest)
+        messages.extend(reversed(fetched))
     except Exception as e:
         logger.warning(f"Failed to fetch thread history: {e}")
     return messages
@@ -149,7 +159,8 @@ def _get_task_context_for_thread(thread_id: str) -> str | None:
     branch_name = task.get("branch_name")
     files_changed = task.get("files_changed", [])
     phase = task.get("phase", "unknown")
-    original_task = task.get("task", "")[:200]
+    original_task = task.get("task", "")[:500]  # Increased from 200
+    ccr_history = task.get("ccr_history", [])
 
     if not branch_name:
         return None
@@ -157,10 +168,57 @@ def _get_task_context_for_thread(thread_id: str) -> str | None:
     # Build context message for AI
     context_parts = [
         "## EXISTING TASK STATE (polly_agent already ran in this thread)",
-        f"- **Branch**: `{branch_name}` (changes already committed locally)",
+        f"- **Branch**: `{branch_name}` (changes on local branch)",
         f"- **Phase**: {phase}",
         f"- **Original task**: {original_task}",
     ]
+
+    # Include ccr interaction history - this is the SHORT-TERM MEMORY
+    # Now with STRUCTURED summaries instead of raw truncated output
+    if ccr_history:
+        context_parts.append("")
+        context_parts.append("### CCR Interaction History (bot AI ↔ ccr)")
+        context_parts.append("*Showing last 5 interactions with structured summaries*")
+        context_parts.append("")
+
+        for i, interaction in enumerate(ccr_history[-5:], 1):  # Show last 5 (was 3)
+            timestamp = interaction.get('timestamp', 'unknown time')
+            success = "✅" if interaction.get('success') else "❌"
+
+            context_parts.append(f"**[{i}] {success} Task:**")
+            context_parts.append(f"> {interaction.get('prompt', '')[:800]}")  # Increased from 500
+
+            # Show structured summary (new format)
+            summary = interaction.get('summary', '')
+            if summary:
+                context_parts.append(f"**Summary:**")
+                context_parts.append(f"```\n{summary}\n```")
+
+            # Show actions taken
+            actions = interaction.get('actions', [])
+            if actions:
+                context_parts.append(f"**Actions:** {', '.join(actions)}")
+
+            # Show files changed
+            files = interaction.get('files_changed', [])
+            if files:
+                files_str = ', '.join(files[:8])
+                if len(files) > 8:
+                    files_str += f" (+{len(files) - 8} more)"
+                context_parts.append(f"**Files:** {files_str}")
+
+            # Show errors if any
+            errors = interaction.get('errors', [])
+            if errors:
+                context_parts.append(f"**Errors:** {errors[0][:200]}")
+
+            # Show todos if available
+            todos = interaction.get('todos', [])
+            if todos:
+                todo_summary = [f"{'✓' if t['status']=='completed' else '○'} {t['content'][:50]}" for t in todos[:5]]
+                context_parts.append(f"**Todos:** {', '.join(todo_summary)}")
+
+            context_parts.append("")  # Blank line between interactions
 
     if files_changed:
         files_list = ", ".join(files_changed[:10])
@@ -168,22 +226,56 @@ def _get_task_context_for_thread(thread_id: str) -> str | None:
             files_list += f" (+{len(files_changed) - 10} more)"
         context_parts.append(f"- **Files changed**: {files_list}")
 
+    # Include bot AI notes - persistent "notes to self"
+    bot_notes = task.get("bot_notes", [])
+    if bot_notes:
+        context_parts.append("")
+        context_parts.append("### Bot AI Notes (your notes to self)")
+        context_parts.append("*These are notes you saved in previous interactions*")
+        context_parts.append("")
+
+        # Group notes by category for readability
+        notes_by_category = {}
+        for note in bot_notes[-15:]:  # Show last 15 notes
+            cat = note.get("category", "context")
+            if cat not in notes_by_category:
+                notes_by_category[cat] = []
+            notes_by_category[cat].append(note)
+
+        # Display order: decision > warning > todo > preference > context
+        category_order = ["decision", "warning", "todo", "preference", "context"]
+        for cat in category_order:
+            if cat in notes_by_category:
+                cat_icon = {"decision": "🎯", "warning": "⚠️", "todo": "📋", "preference": "💡", "context": "📝"}.get(cat, "📝")
+                context_parts.append(f"**{cat_icon} {cat.title()}:**")
+                for note in notes_by_category[cat]:
+                    context_parts.append(f"- {note['content']}")
+                context_parts.append("")
+
+    # Track original user for confirmation flow
+    original_user = task.get("user")
+    original_user_id = task.get("user_id")
+    pending_confirmation = task.get("pending_confirmation")
+
+    if original_user:
+        context_parts.append(f"- **Task owner**: {original_user} (only they can confirm actions)")
+
+    # Show pending confirmation if any
+    if pending_confirmation:
+        context_parts.append("")
+        context_parts.append(f"⏳ **WAITING FOR USER CONFIRMATION**: {pending_confirmation}")
+        context_parts.append("Wait for user response before proceeding.")
+
     context_parts.extend([
         "",
-        "⚠️ **IMPORTANT**: Do NOT call polly_agent(action='task') again for follow-up commands!",
+        "⚠️ **FOLLOW-UP RULES**:",
+        "- push/open_pr: Use these for follow-ups, NOT task again!",
+        "- Only task owner can confirm destructive ops",
         "",
-        "**For push (just push branch to GitHub):**",
-        "- polly_agent(action='push', branch_type='feat|fix|docs', branch_description='short-description')",
-        "- branch_type + branch_description gives proper names like feat/add-dark-mode",
-        "",
-        "**For PR (push + create pull request):**",
-        "- polly_agent(action='open_pr', pr_title='Concise title', pr_body='Detailed summary of changes', branch_type='feat', branch_description='short-name')",
-        "- pr_title: Brief but descriptive (e.g., 'Add dark mode toggle to settings')",
-        "- pr_body: Include what was changed, why, and any testing done",
-        "",
-        "**For more changes:**",
-        "- polly_agent(action='task', task='additional changes needed...')",
-        "- Same branch is reused automatically via thread_id"
+        "**Actions:**",
+        "- `action='push'` - Push branch to GitHub",
+        "- `action='open_pr'` - Create PR",
+        "- `action='task'` - More coding (same branch)"
     ])
 
     return "\n".join(context_parts)
@@ -311,21 +403,9 @@ class PollyBot(commands.Bot):
                         channel = await self.fetch_channel(int(thread_id))
 
                     if channel:
-                        # Create close callback
-                        async def close_callback(tid: str) -> bool:
-                            return await sandbox.close_thread_terminal(tid)
-
-                        # Create reset stale callback
-                        def reset_stale_callback(tid: str):
-                            sandbox.reset_stale_notification(tid)
-
-                        # Create stale notification view
-                        view = StaleTerminalView(
-                            thread_id=thread_id,
-                            owner_user_id=user_id,
-                            close_callback=close_callback,
-                            reset_stale_callback=reset_stale_callback,
-                        )
+                        # Use persistent view - survives bot restarts!
+                        # View looks up terminal info from sandbox at click time
+                        view = PersistentStaleTerminalView()
 
                         await channel.send(
                             f"<@{user_id}> Your coding terminal has been idle for {idle_mins} minutes. "
@@ -357,6 +437,13 @@ async def on_ready():
     """Called when the bot is ready."""
     logger.info(f"{bot.user} is now online!")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+    # Register persistent views for terminal buttons (survive restarts)
+    # These use fixed custom_id and look up terminal info at click time
+    set_sandbox_getter(get_persistent_sandbox)  # Let views access sandbox
+    bot.add_view(PersistentCloseTerminalView())
+    bot.add_view(PersistentStaleTerminalView())
+    logger.info("Registered persistent terminal button views")
 
     # Initialize embeddings if enabled (runs in background)
     if config.local_embeddings_enabled:
@@ -642,6 +729,30 @@ async def start_conversation(message: discord.Message, text: str, image_urls: li
 async def handle_thread_message(message: discord.Message, session: ConversationSession):
     """Handle a message in an existing thread."""
     image_urls = extract_image_urls(message)
+
+    # Check if there's a pending confirmation for this thread and validate user
+    thread_id = str(message.channel.id)
+    from .services.code_agent.tools.polly_agent import (
+        clear_pending_confirmation,
+        get_task_owner_id,
+        _running_tasks
+    )
+
+    # Check if task has pending confirmation
+    task = _running_tasks.get(thread_id)
+    if task and task.get("pending_confirmation"):
+        owner_id = task.get("user_id")
+        if owner_id and message.author.id != owner_id:
+            # Not the task owner - ignore or inform
+            await message.reply(
+                f"⚠️ Only the task owner can respond to this confirmation. "
+                f"Please wait for <@{owner_id}> to respond.",
+                mention_author=False
+            )
+            return
+        # Clear pending confirmation - user is responding
+        clear_pending_confirmation(thread_id)
+        logger.info(f"Cleared pending confirmation for thread {thread_id}")
 
     # Add to session
     session_manager.add_to_session(

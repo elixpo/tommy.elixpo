@@ -23,6 +23,7 @@ from ..constants import (
     get_tool_system_prompt,
     MAX_TITLE_LENGTH,
     filter_tools_by_intent,
+    filter_admin_actions_from_tools,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,10 +186,60 @@ class PollinationsClient:
         # Build messages
         messages = [{"role": "system", "content": system_content}]
 
-        # Add thread history
+        # Add thread history - preserve system messages (like task context) at the front
+        # IMPROVED: Better labeling with session boundaries and context
         if thread_history:
-            for msg in thread_history[-10:]:
+            # Separate system messages from conversation messages
+            system_msgs = [m for m in thread_history if m.get("role") == "system"]
+            convo_msgs = [m for m in thread_history if m.get("role") != "system"]
+
+            # Add all system messages first (e.g., task context, ccr output)
+            # These are CRITICAL - contain task state, ccr history, bot notes
+            if system_msgs:
+                messages.append({
+                    "role": "system",
+                    "content": "═══════════════════════════════════════════════════════════════\n"
+                               "## TASK STATE & BOT CONTEXT (persisted from previous interactions)\n"
+                               "═══════════════════════════════════════════════════════════════"
+                })
+                for msg in system_msgs:
+                    messages.append(msg)
+                messages.append({
+                    "role": "system",
+                    "content": "═══════════════════════════════════════════════════════════════"
+                })
+
+            # Add context label before conversation history
+            if convo_msgs:
+                # Count messages by role for context
+                user_count = len([m for m in convo_msgs if m.get("role") == "user"])
+                bot_count = len([m for m in convo_msgs if m.get("role") == "assistant"])
+
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "═══════════════════════════════════════════════════════════════\n"
+                        f"## THREAD CONVERSATION HISTORY (most recent {len(convo_msgs)} messages: {user_count} user + {bot_count} bot)\n"
+                        "The user's CURRENT message requiring your response is at the END.\n"
+                        "═══════════════════════════════════════════════════════════════"
+                    )
+                })
+
+            # Add ALL conversation messages - OpenAI-compatible API can handle full history
+            # No artificial truncation - let bot AI see complete context
+            for msg in convo_msgs:
                 messages.append(msg)
+
+            # Mark end of history clearly
+            if convo_msgs:
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "═══════════════════════════════════════════════════════════════\n"
+                        "END OF THREAD HISTORY - User's current message is BELOW\n"
+                        "═══════════════════════════════════════════════════════════════"
+                    )
+                })
 
         # Build current user message
         if image_urls:
@@ -232,11 +283,10 @@ class PollinationsClient:
         from ..constants import get_tools_with_embeddings
         all_tools = get_tools_with_embeddings(GITHUB_TOOLS.copy(), config.local_embeddings_enabled)
 
-        # SECURITY: Remove admin-only tools for non-admin users
-        # This prevents AI from even seeing these tools, so it won't ask for confirmation
-        if not is_admin:
-            ADMIN_ONLY_TOOLS = {"polly_agent"}  # Entirely admin-only tools
-            all_tools = [t for t in all_tools if t.get("function", {}).get("name") not in ADMIN_ONLY_TOOLS]
+        # SECURITY: Filter admin actions from tool descriptions for non-admin users
+        # This removes admin-only tools (polly_agent) AND hides admin actions from
+        # other tools (github_issue, github_pr, github_project) so AI can't even see them
+        all_tools = filter_admin_actions_from_tools(all_tools, is_admin)
 
         # Smart tool filtering - only send relevant tools based on user intent
         # This saves tokens and speeds up AI reasoning

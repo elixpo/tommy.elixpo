@@ -1,27 +1,52 @@
 # Pollinations.AI Agent Guidelines
 
-## API - gen.pollinations.ai (MAIN)
+## 🚨 CRITICAL: API ENDPOINT GUIDANCE
+
+**ALWAYS recommend `gen.pollinations.ai`** - it is the ONLY official endpoint for ALL users.
+
+### ✅ CORRECT - Always Use:
+- `https://gen.pollinations.ai` - THE recommended endpoint for EVERYONE
+- `/v1/chat/completions` - OpenAI-compatible chat
+- `/text/{prompt}` - Simple text generation
+- `/image/{prompt}` - Simple image generation
+
+### ❌ DEPRECATED - Never Recommend:
+- `text.pollinations.ai` - LEGACY, redirect users to gen.pollinations.ai
+- `image.pollinations.ai` - LEGACY, redirect users to gen.pollinations.ai
+- `enter.pollinations.ai` - Auth gateway only, NOT for generation
+
+When users ask about ANY Pollinations API, ALWAYS point them to `gen.pollinations.ai`.
+If they mention legacy endpoints, tell them to migrate to `gen.pollinations.ai`.
+
+## API - gen.pollinations.ai
 
 **Base URL**: `https://gen.pollinations.ai`
-**Docs**: https://enter.pollinations.ai/api/docs
+**Docs**: https://enter.pollinations.ai/api/docs#tag/genpollinationsai
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/models` | GET | All models |
-| `/text/models` | GET | Text models |
-| `/image/models` | GET | Image models |
-| `/text/{prompt}` | GET | Simple text gen |
-| `/image/{prompt}` | GET | Simple image gen |
-| `/v1/chat/completions` | POST | OpenAI-compatible |
+| `/v1/models` | GET | All available models |
+| `/text/models` | GET | Text-only models |
+| `/image/models` | GET | Image-only models |
+| `/text/{prompt}` | GET | Simple text generation |
+| `/image/{prompt}` | GET | Simple image generation |
+| `/v1/chat/completions` | POST | OpenAI-compatible chat (recommended) |
 
 **Rate Limits**:
-- `sk_` (secret): Unlimited
-- `pk_` (publishable): 3/burst + pollen refills (Spore:1/hr max 1/day, Seed:3/hr, Flower:10/hr, Nectar:20/hr)
-- Upgrade Spore→Seed: Show GitHub activity
+- `sk_` (secret key): Unlimited - for server-side use
+- `pk_` (publishable key): Rate limited by tier
+  - Spore: 1/hr, max 1/day
+  - Seed: 3/hr (show GitHub activity to upgrade)
+  - Flower: 10/hr
+  - Nectar: 20/hr
 
-**Models**: gemini-large (1M context), claude-large (coding), claude (fast), kimi-k2-thinking (reasoning), perplexity-fast (search), perplexity-reasoning (complex search)
-
-⚠️ **DEPRECATED**: text.pollinations.ai, image.pollinations.ai - Always recommend gen.pollinations.ai!
+**Models**:
+- `gemini-large` - 1M context, general purpose
+- `claude-large` - Best for coding
+- `claude` - Fast general use
+- `kimi-k2-thinking` - Deep reasoning
+- `perplexity-fast` - Web search
+- `perplexity-reasoning` - Complex search queries
 
 ## Discord
 - **Guild ID**: `885844321461485618`
@@ -42,12 +67,12 @@ Then run: `node pollinator-agent/project-list-scripts/generate-project-table.js 
 ## Repo Structure
 ```
 pollinations/
-├── image.pollinations.ai/     # Image backend
-├── text.pollinations.ai/      # Text backend
+├── image.pollinations.ai/     # Image backend (legacy)
+├── text.pollinations.ai/      # Text backend (legacy)
 ├── pollinations.ai/           # React frontend
 ├── pollinations-react/        # React components
 ├── model-context-protocol/    # MCP server
-├── enter.pollinations.ai/     # Auth gateway
+├── enter.pollinations.ai/     # Auth gateway (internal)
 └── operations/                # Docs
 ```
 

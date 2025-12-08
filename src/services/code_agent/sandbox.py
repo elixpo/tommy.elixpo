@@ -38,12 +38,26 @@ class TerminalSession:
     """
     A persistent terminal session inside Docker.
 
+    Architecture: TERMINAL-PER-THREAD (optimal for concurrency)
+
     Each Discord thread gets its own terminal that stays alive between
-    polly_agent calls. This is critical because:
-    - ccr auto-compacts sessions when context is too long
-    - Auto-compaction creates a new session BUT stays in the same terminal
-    - The new session gets context passed from the old session
-    - So terminal persistence = conversation context persistence
+    polly_agent calls. This enables TRUE CONCURRENT task execution:
+
+    Thread A → Terminal A → ccr --session-id A → branch thread/A
+    Thread B → Terminal B → ccr --session-id B → branch thread/B
+    Thread C → Terminal C → ccr --session-id C → branch thread/C
+
+    Why terminal-per-thread (not single terminal):
+    - Concurrent ccr commands REQUIRE separate shells (tested!)
+    - Single terminal forces sequential execution (tasks queue up)
+    - Multiple terminals = multiple users can work simultaneously
+
+    Context persistence (TWO mechanisms):
+    1. ccr --session-id / --resume: Per-thread ccr conversation context
+    2. Terminal persistence: Shell environment and working directory
+
+    Both are important! ccr session isolation handles conversation memory,
+    terminal persistence handles shell state (current branch, env vars, etc.)
     """
     thread_id: str  # Discord thread ID (THE universal key)
     process: asyncio.subprocess.Process
@@ -157,18 +171,49 @@ class TerminalManager:
     - User can manually close anytime via polly_agent(action='close_terminal')
     - After 1 hour idle, bot sends Discord notification asking to close/keep
     - Only the user who started the terminal can close it
+
+    Terminal metadata (thread_id → user_id, channel_id) is persisted to disk
+    so Close Terminal buttons work even after bot restarts.
     """
+
+    # File to persist terminal metadata
+    TERMINALS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "terminals.json"
 
     def __init__(self, container_name: str = CONTAINER_NAME):
         self.container_name = container_name
         self._terminals: Dict[str, TerminalSession] = {}
+        self._terminal_metadata: Dict[str, dict] = {}  # Persisted: thread_id -> {user_id, channel_id}
         self._lock = asyncio.Lock()
         # Callback for sending Discord notifications (set by bot.py)
         self._notify_callback = None
+        # Load persisted metadata on init
+        self._load_metadata()
 
     def set_notify_callback(self, callback):
         """Set callback for Discord notifications: callback(user_id, channel_id, thread_id, message, view)"""
         self._notify_callback = callback
+
+    def _load_metadata(self):
+        """Load terminal metadata from disk."""
+        try:
+            if self.TERMINALS_FILE.exists():
+                import json
+                with open(self.TERMINALS_FILE, 'r') as f:
+                    self._terminal_metadata = json.load(f)
+                logger.info(f"Loaded {len(self._terminal_metadata)} terminal metadata entries")
+        except Exception as e:
+            logger.warning(f"Failed to load terminal metadata: {e}")
+            self._terminal_metadata = {}
+
+    def _save_metadata(self):
+        """Save terminal metadata to disk."""
+        try:
+            import json
+            self.TERMINALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.TERMINALS_FILE, 'w') as f:
+                json.dump(self._terminal_metadata, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save terminal metadata: {e}")
 
     async def get_terminal(
         self,
@@ -198,6 +243,14 @@ class TerminalManager:
             terminal.user_id = user_id
             terminal.channel_id = channel_id
             self._terminals[thread_id] = terminal
+
+            # Persist metadata so buttons work after bot restart
+            self._terminal_metadata[thread_id] = {
+                "user_id": user_id,
+                "channel_id": channel_id,
+            }
+            self._save_metadata()
+
             return terminal
 
     async def _create_terminal(self, thread_id: str) -> TerminalSession:
@@ -250,14 +303,26 @@ class TerminalManager:
             True if terminal was found and closed, False if not found
         """
         async with self._lock:
+            closed = False
+
+            # Close in-memory terminal if exists
             if thread_id in self._terminals:
                 terminal = self._terminals.pop(thread_id)
                 await terminal.close()
                 logger.info(f"Closed terminal for thread {thread_id}")
-                return True
-            else:
+                closed = True
+
+            # Always remove from persisted metadata
+            if thread_id in self._terminal_metadata:
+                del self._terminal_metadata[thread_id]
+                self._save_metadata()
+                logger.info(f"Removed terminal metadata for thread {thread_id}")
+                closed = True  # Count as closed even if just metadata
+
+            if not closed:
                 logger.debug(f"Terminal for thread {thread_id} not found (already closed?)")
-                return False
+
+            return closed
 
     async def check_stale_terminals(self, max_idle_seconds: int = 3600) -> list[dict]:
         """
@@ -306,6 +371,34 @@ class TerminalManager:
             self._terminals[thread_id].notified_stale = False
             self._terminals[thread_id].last_used = datetime.utcnow()
 
+    def get_terminal_info(self, thread_id: str) -> dict | None:
+        """
+        Get terminal info for a thread (used by persistent button handlers).
+
+        Returns dict with user_id, channel_id, or None if terminal doesn't exist.
+        Falls back to persisted metadata if terminal process died but metadata exists.
+        """
+        # First check in-memory terminals
+        if thread_id in self._terminals:
+            terminal = self._terminals[thread_id]
+            return {
+                "user_id": terminal.user_id,
+                "channel_id": terminal.channel_id,
+                "last_used": terminal.last_used.isoformat(),
+                "is_busy": terminal.is_busy,
+            }
+
+        # Fallback to persisted metadata (for after bot restart)
+        if thread_id in self._terminal_metadata:
+            return {
+                "user_id": self._terminal_metadata[thread_id].get("user_id", 0),
+                "channel_id": self._terminal_metadata[thread_id].get("channel_id", 0),
+                "last_used": None,  # Unknown after restart
+                "is_busy": False,
+            }
+
+        return None
+
     async def cleanup_stale(self, max_idle_seconds: int = 3600):
         """
         Legacy method - now just logs stale terminals.
@@ -317,12 +410,14 @@ class TerminalManager:
             logger.info(f"Found {len(stale)} stale terminals (not auto-closing)")
 
     async def close_all(self):
-        """Close all terminal sessions."""
+        """Close all terminal sessions and clear metadata."""
         async with self._lock:
             for thread_id, terminal in list(self._terminals.items()):
                 await terminal.close()
             self._terminals.clear()
-            logger.info("Closed all terminal sessions")
+            self._terminal_metadata.clear()
+            self._save_metadata()
+            logger.info("Closed all terminal sessions and cleared metadata")
 
 # Project root (Polli/) - dynamic, not hardcoded
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -1073,6 +1168,10 @@ sed -i -e :a -e '/^\\n*$/{$d;N;ba' -e '}' "$COMMIT_MSG_FILE"
         """Reset stale notification flag when user clicks 'Keep Open'."""
         self.terminal_manager.reset_stale_notification(thread_id)
 
+    def get_terminal_info(self, thread_id: str) -> dict | None:
+        """Get terminal info for a thread (used by persistent button handlers)."""
+        return self.terminal_manager.get_terminal_info(thread_id)
+
     async def cleanup_stale_terminals(self, max_idle_seconds: int = 3600):
         """Legacy method - use check_stale_terminals() for proper notification flow."""
         await self.terminal_manager.cleanup_stale(max_idle_seconds)
@@ -1151,20 +1250,20 @@ echo "password=$GH_TOKEN"
                 as_coder=True
             )
 
-            # Set the token as environment variable in the container
-            # Using docker exec to set it in the coder user's bashrc for persistence
-            escaped_token = shlex.quote(token)
-            await self.execute(
-                f"echo 'export GH_TOKEN={escaped_token}' >> /home/coder/.bashrc",
-                as_coder=True
-            )
-            # Also export it immediately for current session
-            await self.execute(f"export GH_TOKEN={escaped_token}", as_coder=True)
+            # NOTE: We no longer persist the token to bashrc for security reasons.
+            # The push_branch() method passes the token directly in the URL for each
+            # push operation, which is more secure as it:
+            # 1. Doesn't persist credentials to disk
+            # 2. Uses a fresh token for each operation
+            # 3. Can't be read by compromised code in the sandbox
+            #
+            # The credential helper above is kept for backward compatibility but
+            # won't work without GH_TOKEN set. push_branch() is the preferred method.
 
             # Clean up local helper file
             helper_path.unlink(missing_ok=True)
 
-            logger.info("GitHub App credentials configured in sandbox (token via env var)")
+            logger.info("GitHub App credentials configured (using inline token for push)")
             return True
 
         except Exception as e:
