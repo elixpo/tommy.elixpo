@@ -497,68 +497,32 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Code agent for ACTUAL CODE CHANGES. Returns agent_response with what was done.
+            "description": """Polly's coding agent - handles ALL code operations.
 
-Actions:
-- task: Run coding task (pass COMPLETE context). Returns agent_response.
-- push: Push changes to GitHub (after task completed)
-- open_pr: Create PR (after task completed)
-- status: Check task status
-- list_tasks: List all tasks
-- run_in_sandbox/read_sandbox_file/write_sandbox_file: Sandbox ops
+⚠️ WORKFLOW:
+1. action='task' → Polly reads files, edits code, runs tests, commits (ALL IN ONE)
+2. action='push' → Push branch to GitHub (after task)
+3. action='open_pr' → Create PR (after task)
 
-⚠️ CRITICAL: After task completes, use push/open_pr for follow-ups, NOT task again!""",
+IMPORTANT: To read a file, edit code, or make ANY changes - use action='task' with a description.
+Example: polly_agent(action='task', task='Read README.md and add news entry for Model Monitor feature')
+
+Do NOT try read_file, edit_file, etc. - those don't exist. Just describe what you want in task.""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["task", "status", "list_tasks", "ask_user", "update_embed", "run_in_sandbox", "read_sandbox_file", "write_sandbox_file", "destroy_sandbox", "list_branches", "create_branch", "delete_branch", "read_file", "list_files", "edit_file", "commit", "push", "open_pr"],
-                        "description": "Action to perform. ask_user: Ask task owner for confirmation/input"
-                    },
-                    "question": {
-                        "type": "string",
-                        "description": "Question to ask user (for ask_user action)"
-                    },
-                    "sandbox_id": {
-                        "type": "string",
-                        "description": "Sandbox ID for sandbox operations (from previous task result)"
-                    },
-                    "command": {
-                        "type": "string",
-                        "description": "Shell command to run in sandbox (for run_in_sandbox)"
+                        "enum": ["task", "status", "list_tasks", "ask_user", "push", "open_pr"],
+                        "description": "Action: task (do coding work), push (push to GitHub), open_pr (create PR), status/list_tasks (check progress), ask_user (get user input)"
                     },
                     "task": {
                         "type": "string",
-                        "description": "Task description (for task/plan actions)"
+                        "description": "REQUIRED for action='task'. Describe what to do - reading files, editing code, running tests, etc. Be specific!"
                     },
-                    "repo": {
+                    "question": {
                         "type": "string",
-                        "description": "Repository in owner/repo format (default: pollinations/pollinations)"
-                    },
-                    "branch": {
-                        "type": "string",
-                        "description": "Working branch (default: main)"
-                    },
-                    "new_branch": {
-                        "type": "string",
-                        "description": "Branch name for create_branch/delete_branch"
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": "Path to file for read_file/edit_file"
-                    },
-                    "file_content": {
-                        "type": "string",
-                        "description": "New content for file (edit_file)"
-                    },
-                    "old_content": {
-                        "type": "string",
-                        "description": "Old content to find and replace (edit_file search/replace mode)"
-                    },
-                    "commit_message": {
-                        "type": "string",
-                        "description": "Commit message (for commit action)"
+                        "description": "Question for ask_user action"
                     },
                     "pr_title": {
                         "type": "string",
@@ -568,29 +532,9 @@ Actions:
                         "type": "string",
                         "description": "PR description (for open_pr)"
                     },
-                    "base_branch": {
+                    "repo": {
                         "type": "string",
-                        "description": "Base branch for PR (default: main)"
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": "Glob pattern for list_files (e.g., '*.py')"
-                    },
-                    "create_pr": {
-                        "type": "boolean",
-                        "description": "Create PR after task completion"
-                    },
-                    "test_only": {
-                        "type": "boolean",
-                        "description": "Stop after testing - don't commit or PR. Use this to test code without making changes to repo. User can then decide to commit/PR separately."
-                    },
-                    "max_fix_attempts": {
-                        "type": "integer",
-                        "description": "Max attempts to fix failing tests (default: 5)"
-                    },
-                    "task_id": {
-                        "type": "string",
-                        "description": "Task ID - CRITICAL: Pass this for ALL follow-up calls in the same thread to reuse the same branch and session. Get task_id from initial task response."
+                        "description": "Repository (default: pollinations/pollinations)"
                     }
                 },
                 "required": ["action"]
