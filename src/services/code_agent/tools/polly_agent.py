@@ -1,17 +1,15 @@
 """
 GitHub Code tool handler for Discord bot integration.
 
-Uses ccr (code router) as the ONLY coding engine.
-
 Architecture:
 - Bot AI handles user intent and conversation
-- ccr handles ALL code operations (read, edit, test, git, commits)
+- Polly handles ALL code operations (read, edit, test, git, commits)
 - Single Discord embed updates in real-time (no message spam)
 - Terminal-per-thread for concurrent tasks
 - Sandbox stays alive for follow-up commands
 
 Available actions:
-- task: Run coding task via ccr (THE ONLY way to edit code!)
+- task: Run coding task (THE ONLY way to edit code!)
 - status: Check running task status
 - list_tasks: List all tasks
 - ask_user: Set pending confirmation for user input
@@ -24,15 +22,17 @@ Available actions:
 - update_embed: Update Discord embed status
 
 IMPORTANT: There are NO direct GitHub API file operations!
-All code changes MUST go through action='task' which uses ccr.
+All code changes MUST go through action='task'.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
 import shlex
+import uuid
 from pathlib import Path
 from typing import Optional, Any
 from datetime import datetime
@@ -118,7 +118,7 @@ def _load_tasks():
 _load_tasks()
 
 
-def _build_ccr_interaction_summary(
+def _build_interaction_summary(
     task: str,
     output: str | None,
     files_changed: list[str],
@@ -126,7 +126,7 @@ def _build_ccr_interaction_summary(
     todos: list = None,
 ) -> dict:
     """
-    Build a STRUCTURED summary of a ccr interaction for bot AI context.
+    Build a STRUCTURED summary of an interaction for bot AI context.
 
     Instead of raw truncated output, we extract meaningful information:
     - Task prompt (what was asked)
@@ -260,19 +260,19 @@ async def tool_polly_agent(
     **kwargs
 ) -> dict:
     """
-    GitHub Code tool handler - ALL code changes via ccr.
+    GitHub Code tool handler - ALL code changes via Polly.
 
     Architecture:
-        YOU drive the workflow - ccr executes coding tasks.
+        YOU drive the workflow - Polly executes coding tasks.
         After 'task' action completes, YOU decide what to do next.
         Use your judgment to:
         - Ask users questions when their input adds value
         - Run tests/builds via sandbox if relevant
         - Create PRs when changes are ready (action='open_pr')
-        - Send follow-up prompts to ccr for more work (action='task')
+        - Send follow-up prompts for more work (action='task')
 
     Actions:
-        task: Run coding task via ccr (THE ONLY WAY TO EDIT CODE!)
+        task: Run coding task (THE ONLY WAY TO EDIT CODE!)
         status: Check running task status
         list_tasks: List all tasks
         ask_user: Set pending user confirmation
@@ -377,7 +377,7 @@ async def tool_polly_agent(
         if action == "open_pr":
             return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body, task_id)
 
-        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, ask_user, add_note, get_notes, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, push, open_pr. NOTE: To edit code, use action='task' with a task description - ccr handles all code changes!"}
+        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, ask_user, add_note, get_notes, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, push, open_pr. NOTE: To edit code, use action='task' with a task description!"}
 
     except Exception as e:
         logger.exception("Error in polly_agent tool")
@@ -794,7 +794,6 @@ async def _handle_code_task(
         task_id = existing_task_id
     else:
         # Fallback for non-Discord usage
-        import uuid
         task_id = str(uuid.uuid4())[:8]
 
     # Check if task already exists (continuing work in same thread)
@@ -835,7 +834,7 @@ async def _handle_code_task(
             embed_manager.add_step("Setting up environment")
             embed_manager.add_step("Creating terminal")
             embed_manager.add_step("Setting up branch")
-            embed_manager.add_step("Running ccr")
+            embed_manager.add_step("Working on task")
             embed_manager.add_step("Processing results")
             # Start first step
             embed_manager.start_step(0)
@@ -909,8 +908,8 @@ async def _handle_code_task(
         if embed_manager:
             embed_manager.complete_step(2)  # Complete "Setting up branch"
             embed_manager.set_branch(branch_name, "main")
-            embed_manager.start_step(3)  # "Running ccr"
-            embed_manager.set_action("Running ccr")
+            embed_manager.start_step(3)  # "Working on task"
+            embed_manager.set_action("Working on task")
             embed_manager.set_sub_action(task[:60] + "..." if len(task) > 60 else task)
             asyncio.create_task(embed_manager.update())
 
@@ -1017,8 +1016,8 @@ async def _handle_code_task(
         _running_tasks[task_id]["files_changed"] = result.files_changed
         _running_tasks[task_id]["user"] = user_name
 
-        # Store ccr interaction history for context in follow-up calls
-        # This is the SHORT-TERM MEMORY between bot AI and ccr
+        # Store interaction history for context in follow-up calls
+        # This is the SHORT-TERM MEMORY between bot AI and Polly
         #
         # STRUCTURED SUMMARY: Instead of raw truncated output, we extract
         # key information that helps bot AI understand what happened:
@@ -1029,17 +1028,17 @@ async def _handle_code_task(
         #
         # PARALLEL: Build summary in background thread (CPU-bound string processing)
         loop = asyncio.get_running_loop()
-        ccr_interaction = await loop.run_in_executor(
+        interaction = await loop.run_in_executor(
             None,
-            _build_ccr_interaction_summary,
+            _build_interaction_summary,
             task, result.output, result.files_changed, result.success, result.todos
         )
 
         # Append to history (keep last 10 interactions for richer context)
-        if "ccr_history" not in _running_tasks[task_id]:
-            _running_tasks[task_id]["ccr_history"] = []
-        _running_tasks[task_id]["ccr_history"].append(ccr_interaction)
-        _running_tasks[task_id]["ccr_history"] = _running_tasks[task_id]["ccr_history"][-10:]
+        if "history" not in _running_tasks[task_id]:
+            _running_tasks[task_id]["history"] = []
+        _running_tasks[task_id]["history"].append(interaction)
+        _running_tasks[task_id]["history"] = _running_tasks[task_id]["history"][-10:]
 
         # Save to disk in background - fire-and-forget
         loop.run_in_executor(None, _save_tasks)
@@ -1047,29 +1046,29 @@ async def _handle_code_task(
         # Include todos in response
         todos_summary = [{"content": t.content, "status": t.status} for t in result.todos]
 
-        # Return FULL ccr output - let bot AI read it and decide what to do
-        # This enables dynamic conversation: AI can reply to ccr, ask user, or mark done
+        # Return FULL output - let bot AI read it and decide what to do
+        # This enables dynamic conversation: AI can reply, ask user, or mark done
         return {
             "success": result.success,
             "task_id": task_id,
             "task": task,
             "repo": repo,
             "branch": result.branch_name or branch,
-            "ccr_response": result.output,  # FULL ccr output - AI reads this and decides
+            "agent_response": result.output,  # FULL output - AI reads this and decides
             "files_changed": result.files_changed,
             "todos": todos_summary,
             "duration": result.duration_seconds,
             "error": result.error,
             "_ai_hint": (
-                "⚠️ CRITICAL: Your Discord response MUST be based ONLY on ccr_response above!\n"
-                "ccr_response contains what the coding agent ACTUALLY did - READ IT.\n\n"
+                "⚠️ CRITICAL: Your Discord response MUST be based ONLY on agent_response above!\n"
+                "agent_response contains what I ACTUALLY did - READ IT.\n\n"
                 "❌ NEVER say: 'I cannot access', 'I don't have ability', 'Let me help you manually'\n"
-                "✅ ALWAYS say: 'ccr [did X]' based on the actual ccr_response content\n\n"
+                "✅ ALWAYS say: 'I [did X]' based on the actual agent_response content\n\n"
                 "DECISION TREE:\n"
-                "1. ccr SUCCESS + files_changed → Summarize changes FROM ccr_response, ask 'Create a PR?'\n"
-                "2. ccr SUCCESS + no files → Report what ccr found/said FROM ccr_response\n"
-                "3. ccr NEEDS INFO → Use YOUR tools (code_search, github_issue) to get it, call polly_agent again\n"
-                "4. ccr ERROR → Explain the ACTUAL error FROM ccr_response\n\n"
+                "1. SUCCESS + files_changed → Summarize changes FROM agent_response, ask 'Create a PR?'\n"
+                "2. SUCCESS + no files → Report what I found/said FROM agent_response\n"
+                "3. NEEDS INFO → Use YOUR tools (code_search, github_issue) to get it, call polly_agent again\n"
+                "4. ERROR → Explain the ACTUAL error FROM agent_response\n\n"
                 "TASK IS NOT DONE until user confirms.\n\n"
                 "🔑 BRANCH NAMING: Branch is auto-generated with proper name (feat/*, fix/*, etc.)\n"
                 f"- Current branch: {result.branch_name}\n"
@@ -1080,7 +1079,7 @@ async def _handle_code_task(
                 "Branch name is already set properly - just provide PR title and body.\n\n"
                 "TO CONTINUE WORK (follow-up task) - just call polly_agent again:\n"
                 "polly_agent(action='task', task='also add tests')\n"
-                "The thread_id is auto-injected, so ccr continues on the same branch with full context.\n\n"
+                "The thread_id is auto-injected, so I continue on the same branch with full context.\n\n"
                 "📝 NOTES TO SELF - Save important context for later:\n"
                 "polly_agent(action='add_note', note='User prefers TypeScript', category='preference')\n"
                 "Categories: decision, warning, todo, preference, context\n"

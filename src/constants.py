@@ -497,18 +497,15 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Code agent for ACTUAL CODE CHANGES. Returns ccr_response with what was done.
+            "description": """Code agent for ACTUAL CODE CHANGES. Returns agent_response with what was done.
 
 Actions:
-- task: Run coding task (pass COMPLETE context). Returns ccr_response.
+- task: Run coding task (pass COMPLETE context). Returns agent_response.
 - push: Push changes to GitHub (after task completed)
 - open_pr: Create PR (after task completed)
 - status: Check task status
 - list_tasks: List all tasks
 - run_in_sandbox/read_sandbox_file/write_sandbox_file: Sandbox ops
-- list_branches/create_branch/delete_branch: Branch ops [admin]
-- read_file/list_files/edit_file: File ops [admin for edit]
-- commit: Commit changes
 
 ⚠️ CRITICAL: After task completes, use push/open_pr for follow-ups, NOT task again!""",
             "parameters": {
@@ -593,7 +590,7 @@ Actions:
                     },
                     "task_id": {
                         "type": "string",
-                        "description": "Task ID - CRITICAL: Pass this for ALL follow-up calls in the same thread to reuse the same branch and ccr session. Get task_id from initial task response."
+                        "description": "Task ID - CRITICAL: Pass this for ALL follow-up calls in the same thread to reuse the same branch and session. Get task_id from initial task response."
                     }
                 },
                 "required": ["action"]
@@ -901,22 +898,22 @@ Before `action="task"`, get info with other tools:
 **2. PASS COMPLETE INFO**
 polly_agent(action="task", task="Fix #5735: [FULL DESCRIPTION]\\nFiles: src/x.py\\nProblem: [exact issue]")
 
-**3. RESPONSE = ccr_response**
-After polly_agent returns, your message MUST quote ccr_response. Never say "I cannot access".
+**3. RESPONSE = agent_response**
+After polly_agent returns, your message MUST quote agent_response. Never say "I cannot access".
 
-**4. FOLLOW-UPS: push/open_pr, NOT task!** ⚠️
-After ccr completed changes:
+**4. FOLLOW-UPS: push/open_pr, NOT task!**
+After I completed changes:
 - "make a branch" / "push it" → `action="push"` (NOT task!)
 - "open a PR" → `action="open_pr"`
 
-❌ WRONG: polly_agent(action="task") after changes done - re-runs everything!
-✅ RIGHT: polly_agent(action="push") - pushes existing changes
+WRONG: polly_agent(action="task") after changes done - re-runs everything!
+RIGHT: polly_agent(action="push") - pushes existing changes
 
 **5. CONFIRM DESTRUCTIVE OPS**
 merge, delete_branch, lock, close PR → confirm first.
 
 **6. DYNAMIC STATE - ASK USER WHEN NEEDED**
-If ccr needs clarification or you need confirmation:
+If I need clarification or you need confirmation:
 - Call `polly_agent(action='ask_user', question='...')` to set pending confirmation
 - Then send a Discord message with the question
 - WAIT for user response before proceeding (only task owner can respond)
