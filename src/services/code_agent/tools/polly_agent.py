@@ -1,26 +1,30 @@
 """
 GitHub Code tool handler for Discord bot integration.
 
-Uses ccr (code router) as the coding engine.
+Uses ccr (code router) as the ONLY coding engine.
 
 Architecture:
 - Bot AI handles user intent and conversation
-- ccr handles all actual coding work (read, edit, test, git)
+- ccr handles ALL code operations (read, edit, test, git, commits)
 - Single Discord embed updates in real-time (no message spam)
+- Terminal-per-thread for concurrent tasks
 - Sandbox stays alive for follow-up commands
 
 Available actions:
-- task: Full coding workflow
+- task: Run coding task via ccr (THE ONLY way to edit code!)
 - status: Check running task status
-- create_branch: Create a new branch
-- edit_file: Edit a file directly
-- commit: Commit staged changes
-- push: Push to remote
+- list_tasks: List all tasks
+- ask_user: Set pending confirmation for user input
+- add_note/get_notes: Bot AI notes to self
+- push: Push branch from sandbox to GitHub
 - open_pr: Open a pull request
-- delete_branch: Delete a branch
-- list_branches: List branches
-- read_file: Read file contents
-- list_files: List files in directory
+- run_in_sandbox: Run command in sandbox
+- read_sandbox_file/write_sandbox_file: File ops in sandbox
+- destroy_sandbox: Cleanup sandbox
+- update_embed: Update Discord embed status
+
+IMPORTANT: There are NO direct GitHub API file operations!
+All code changes MUST go through action='task' which uses ccr.
 """
 
 import asyncio
@@ -240,19 +244,13 @@ async def tool_polly_agent(
     repo: str = "pollinations/pollinations",
     branch: str = "main",
     task_id: Optional[str] = None,
-    # Git operation parameters
-    new_branch: Optional[str] = None,
-    file_path: Optional[str] = None,
-    file_content: Optional[str] = None,
-    old_content: Optional[str] = None,  # For edit_file search/replace
-    commit_message: Optional[str] = None,
+    # PR parameters
     pr_title: Optional[str] = None,
     pr_body: Optional[str] = None,
-    base_branch: Optional[str] = None,  # For PRs
-    pattern: Optional[str] = None,  # For list_files
-    # Branch naming for push/PR (converts task/* to proper names like feat/*, fix/*)
-    branch_type: Optional[str] = None,  # feat, fix, docs, refactor, chore, etc.
-    branch_description: Optional[str] = None,  # Short description for branch name
+    base_branch: Optional[str] = None,  # For PRs (default: main)
+    # Sandbox file operations (for read_sandbox_file, write_sandbox_file)
+    file_path: Optional[str] = None,
+    file_content: Optional[str] = None,
     # Discord context (injected by bot.py)
     discord_channel: Optional[discord.TextChannel] = None,
     discord_thread_id: Optional[int] = None,  # Thread ID for automatic task_id lookup
@@ -262,54 +260,43 @@ async def tool_polly_agent(
     **kwargs
 ) -> dict:
     """
-    GitHub Code tool handler - flexible git operations.
+    GitHub Code tool handler - ALL code changes via ccr.
 
     Architecture:
-        YOU drive the workflow - the code agent just executes coding tasks.
-        After 'task' action completes, YOU decide what to do next based on context.
-        There are NO predefined steps - use your judgment to:
+        YOU drive the workflow - ccr executes coding tasks.
+        After 'task' action completes, YOU decide what to do next.
+        Use your judgment to:
         - Ask users questions when their input adds value
         - Run tests/builds via sandbox if relevant
-        - Create PRs when changes are ready
-        - Send follow-up prompts to the code agent for more work
+        - Create PRs when changes are ready (action='open_pr')
+        - Send follow-up prompts to ccr for more work (action='task')
 
     Actions:
-        task: Run coding task (returns sandbox_id for follow-ups)
+        task: Run coding task via ccr (THE ONLY WAY TO EDIT CODE!)
         status: Check running task status
-        run_in_sandbox: Execute ANY command in sandbox (tests, builds, etc)
+        list_tasks: List all tasks
+        ask_user: Set pending user confirmation
+        add_note/get_notes: Bot AI notes to self
+        run_in_sandbox: Execute command in sandbox (tests, builds, etc)
         read_sandbox_file: Read file from sandbox
         write_sandbox_file: Write file to sandbox
         destroy_sandbox: Destroy sandbox when done
+        update_embed: Update Discord embed status
+        push: Push branch from sandbox to GitHub
+        open_pr: Create PR (after pushing)
 
-        Git Operations (via GitHub API):
-        create_branch: Create a new branch
-        edit_file: Edit a file directly
-        read_file: Read file contents
-        list_files: List files
-        commit: (no-op - commits auto-created)
-        push: (no-op - pushes auto-done)
-        open_pr: Create PR
-        delete_branch: Delete a branch
-        list_branches: List all branches
-
-    Response fields:
-        _ai_hint: Guidance for YOU (Gemini) on what to consider next.
-                  NOT shown to users - just helps you decide.
+    IMPORTANT: NO direct GitHub file operations!
+    To edit files, read files, or make any code changes:
+    Use action='task' with task='read file X' or task='edit file X to do Y'
 
     Args:
         action: Action to perform
-        task: Task description (for task action)
+        task: Task description (for task action - required!)
         repo: Repository (owner/repo)
         branch: Working branch
-        new_branch: Branch name for create/delete
-        file_path: Path to file for read/edit
-        file_content: New content for file
-        old_content: Old content to find and replace
-        commit_message: Message for commits
-        pr_title: PR title
-        pr_body: PR description
-        base_branch: Base branch for PR
-        pattern: Glob pattern for list_files
+        pr_title: PR title (for open_pr)
+        pr_body: PR description (for open_pr)
+        base_branch: Base branch for PR (default: main)
         _is_admin: Admin flag - MUST be set by bot.py (default False = blocked)
 
     Returns:
@@ -349,15 +336,7 @@ async def tool_polly_agent(
         if action == "get_notes":
             return _handle_get_notes(task_id, kwargs.get("category"))
 
-        # Task queue status
-        if action == "queue_status":
-            return _handle_queue_status(kwargs.get("discord_user_id"))
-
-        # List branches (uses GitHub API directly)
-        if action == "list_branches":
-            return await _handle_list_branches(repo)
-
-        # task action uses code agent
+        # task action uses ccr - THE ONLY WAY TO EDIT CODE
         if action == "task":
             return await _handle_code_task(
                 task=task,
@@ -386,25 +365,7 @@ async def tool_polly_agent(
         if action == "update_embed":
             return await _handle_update_embed(kwargs.get("task_id"), kwargs.get("status"), kwargs.get("finish", False))
 
-        # Git operations - use GitHub API directly
-        if action == "create_branch":
-            return await _handle_create_branch(repo, branch, new_branch)
-
-        if action == "delete_branch":
-            return await _handle_delete_branch(repo, new_branch)
-
-        if action == "read_file":
-            return await _handle_read_file(repo, branch, file_path)
-
-        if action == "list_files":
-            return await _handle_list_files(repo, branch, pattern)
-
-        if action == "edit_file":
-            return await _handle_edit_file(repo, branch, file_path, file_content, old_content)
-
-        if action == "commit":
-            return await _handle_commit(repo, branch, commit_message)
-
+        # Push from sandbox (uses sandbox.push_branch with GitHub App auth)
         if action == "push":
             return await _handle_push(
                 repo, branch, task_id,
@@ -412,10 +373,11 @@ async def tool_polly_agent(
                 discord_user_id=kwargs.get("discord_user_id", 0)
             )
 
+        # Open PR (uses GitHub API - this is fine, not editing code)
         if action == "open_pr":
             return await _handle_open_pr(repo, branch, base_branch, pr_title, pr_body, task_id)
 
-        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, ask_user, add_note, get_notes, queue_status, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, list_branches, create_branch, delete_branch, read_file, list_files, edit_file, commit, push, open_pr"}
+        return {"error": f"Unknown action: {action}. Available: task, status, list_tasks, ask_user, add_note, get_notes, update_embed, run_in_sandbox, read_sandbox_file, write_sandbox_file, destroy_sandbox, push, open_pr. NOTE: To edit code, use action='task' with a task description - ccr handles all code changes!"}
 
     except Exception as e:
         logger.exception("Error in polly_agent tool")
@@ -1205,204 +1167,6 @@ async def _github_api(method: str, endpoint: str, data: dict = None) -> tuple[in
         except:
             result = {"message": await response.text()}
         return response.status, result
-
-
-async def _handle_list_branches(repo: str) -> dict:
-    """List all branches in a repository using REST API."""
-    # Get default branch first
-    status, repo_data = await _github_api("GET", f"/repos/{repo}")
-    default_branch = repo_data.get("default_branch", "main") if status == 200 else "main"
-
-    # List branches
-    status, branches = await _github_api("GET", f"/repos/{repo}/branches?per_page=100")
-    if status != 200:
-        return {"error": f"Failed to list branches: {branches.get('message', status)}"}
-
-    branch_list = [b["name"] for b in branches]
-
-    # Format with default branch indicator
-    lines = []
-    for b in branches[:20]:
-        marker = " (default)" if b["name"] == default_branch else ""
-        lines.append(f"- {b['name']}{marker}")
-
-    return {
-        "success": True,
-        "branches": branch_list,
-        "default_branch": default_branch,
-        "message": f"**Branches in {repo}:**\n" + "\n".join(lines)
-    }
-
-
-async def _handle_create_branch(repo: str, base_branch: str, new_branch: Optional[str]) -> dict:
-    """Create a new branch from base branch using GitHub API."""
-    if not new_branch:
-        return {"error": "new_branch parameter is required"}
-
-    # Get the SHA of the base branch
-    status, data = await _github_api("GET", f"/repos/{repo}/git/ref/heads/{base_branch}")
-    if status != 200:
-        return {"error": f"Base branch '{base_branch}' not found: {data.get('message', status)}"}
-
-    base_sha = data["object"]["sha"]
-
-    # Create the new branch
-    status, data = await _github_api(
-        "POST",
-        f"/repos/{repo}/git/refs",
-        {"ref": f"refs/heads/{new_branch}", "sha": base_sha}
-    )
-
-    if status == 201:
-        return {
-            "success": True,
-            "branch": new_branch,
-            "base": base_branch,
-            "message": f"✅ Created branch `{new_branch}` from `{base_branch}`"
-        }
-    elif status == 422:
-        return {"error": f"Branch `{new_branch}` already exists"}
-    return {"error": f"Failed to create branch: {data.get('message', status)}"}
-
-
-async def _handle_delete_branch(repo: str, branch_name: Optional[str]) -> dict:
-    """Delete a branch using GitHub API."""
-    if not branch_name:
-        return {"error": "new_branch parameter is required (the branch to delete)"}
-
-    # Safety check - don't delete main/master
-    if branch_name in ("main", "master"):
-        return {"error": "Cannot delete main/master branch!"}
-
-    status, data = await _github_api("DELETE", f"/repos/{repo}/git/refs/heads/{branch_name}")
-
-    if status == 204:
-        return {
-            "success": True,
-            "branch": branch_name,
-            "message": f"✅ Deleted branch `{branch_name}`"
-        }
-    elif status == 422:
-        return {"error": f"Branch `{branch_name}` not found or protected"}
-    return {"error": f"Failed to delete branch: {data.get('message', status)}"}
-
-
-async def _handle_read_file(repo: str, branch: str, file_path: Optional[str]) -> dict:
-    """Read a file from the repository using GitHub API."""
-    if not file_path:
-        return {"error": "file_path parameter is required"}
-
-    status, data = await _github_api("GET", f"/repos/{repo}/contents/{file_path}?ref={branch}")
-
-    if status == 200:
-        import base64
-        content = base64.b64decode(data["content"]).decode("utf-8")
-
-        # Truncate if too long for Discord
-        display_content = content
-        if len(display_content) > 1800:
-            display_content = display_content[:1800] + "\n\n... (truncated)"
-
-        return {
-            "success": True,
-            "file": file_path,
-            "content": content,
-            "sha": data["sha"],
-            "message": f"**{file_path}:**\n```\n{display_content}\n```"
-        }
-    elif status == 404:
-        return {"error": f"File not found: {file_path}"}
-    return {"error": f"Failed to read file: {data.get('message', status)}"}
-
-
-async def _handle_list_files(repo: str, branch: str, pattern: Optional[str]) -> dict:
-    """List files in the repository using GitHub API."""
-    # Get the tree recursively
-    status, data = await _github_api("GET", f"/repos/{repo}/git/trees/{branch}?recursive=1")
-
-    if status == 200:
-        import fnmatch
-        glob_pattern = pattern or "*"
-
-        files = [item["path"] for item in data.get("tree", []) if item["type"] == "blob"]
-
-        # Filter by pattern if provided
-        if pattern:
-            files = [f for f in files if fnmatch.fnmatch(f, glob_pattern)]
-
-        return {
-            "success": True,
-            "pattern": glob_pattern,
-            "files": files[:100],  # Limit to 100
-            "message": f"**Files matching `{glob_pattern}`:**\n" + "\n".join([f"- {f}" for f in files[:30]])
-        }
-    return {"error": f"Failed to list files: {data.get('message', status)}"}
-
-
-async def _handle_edit_file(
-    repo: str,
-    branch: str,
-    file_path: Optional[str],
-    new_content: Optional[str],
-    old_content: Optional[str]
-) -> dict:
-    """Edit a file in the repository using GitHub API."""
-    if not file_path:
-        return {"error": "file_path parameter is required"}
-    if not new_content:
-        return {"error": "file_content parameter is required"}
-
-    import base64
-
-    # Get current file to get SHA (needed for update)
-    status, data = await _github_api("GET", f"/repos/{repo}/contents/{file_path}?ref={branch}")
-
-    file_sha = None
-    if status == 200:
-        file_sha = data["sha"]
-
-        if old_content:
-            # Search and replace mode
-            current_content = base64.b64decode(data["content"]).decode("utf-8")
-            if old_content not in current_content:
-                return {"error": f"Could not find the specified old_content in {file_path}"}
-            new_content = current_content.replace(old_content, new_content, 1)
-    elif status == 404 and old_content:
-        return {"error": f"File not found: {file_path}"}
-    # If 404 and no old_content, we're creating a new file
-
-    # Update/create the file
-    encoded_content = base64.b64encode(new_content.encode("utf-8")).decode("utf-8")
-
-    update_data = {
-        "message": f"Update {file_path}",
-        "content": encoded_content,
-        "branch": branch
-    }
-    if file_sha:
-        update_data["sha"] = file_sha
-
-    status, data = await _github_api("PUT", f"/repos/{repo}/contents/{file_path}", update_data)
-
-    if status in (200, 201):
-        return {
-            "success": True,
-            "file": file_path,
-            "commit_sha": data.get("commit", {}).get("sha", "")[:8],
-            "message": f"✅ Updated `{file_path}` on branch `{branch}`"
-        }
-    return {"error": f"Failed to edit file: {data.get('message', status)}"}
-
-
-async def _handle_commit(repo: str, branch: str, message: Optional[str]) -> dict:
-    """
-    Commit is handled automatically by edit_file via GitHub API.
-    This is a no-op that just returns info.
-    """
-    return {
-        "success": True,
-        "message": "ℹ️ Commits are created automatically when using `edit_file`. Each edit creates a commit."
-    }
 
 
 def _generate_branch_name_from_task(task: str, task_id: str) -> str:
