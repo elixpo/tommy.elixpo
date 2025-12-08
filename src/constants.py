@@ -866,7 +866,7 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Tim
 
 **GitHub content** (issues, PRs, comments):
 - Links: `[text](url)` - NO angle brackets
-- Mentions: @username (real GitHub mentions work)
+- Usernames: \`username\` (backticks - we only know Discord names, NOT GitHub!)
 - References: #123 auto-links to issues/PRs
 - Code: \`inline\` or \`\`\`lang blocks
 
