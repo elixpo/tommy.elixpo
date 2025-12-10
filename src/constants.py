@@ -500,19 +500,16 @@ Actions:
         "type": "function",
         "function": {
             "name": "polly_agent",
-            "description": """Polly's coding agent - ONLY for ACTUAL CODE EDITS!
+            "description": """⛔ STRICT: ONLY for WRITING/EDITING code. NOTHING ELSE.
 
-⚠️ STRICT USAGE:
-✅ USE: "implement X", "fix bug", "add feature", "edit code", "modify file", "refactor"
-❌ NEVER: "search", "find", "show", "read", "list", "what does X do" → use code_search!
+NEVER USE FOR:
+- Questions or inquiries of any kind
+- Reading/searching/finding/understanding code → use code_search
+- Anything that doesn't require actual file modifications
 
-WORKFLOW:
-1. code_search FIRST → find relevant files
-2. action='task' → EDIT code (auto-commits locally, auto-creates branch)
-3. action='push' → Push to GitHub (after edits done)
-4. action='open_pr' → Create PR (after push)
+ONLY USE WHEN: User explicitly asks you to make code changes, create a PR, or push commits.
 
-Example: polly_agent(action='task', task='Fix model routing bug in server.js - change flux fallback to zimage')""",
+When in doubt: DON'T use polly_agent. Use code_search instead.""",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -911,18 +908,24 @@ NEVER answer factual questions from memory alone. Search first!
 
 **PROACTIVE**: Fetch data, don't ask. User mentions #123? GET it.
 
-## polly_agent (CODE EDITS ONLY!)
-✅ USE: "implement", "fix bug", "edit code", "add feature", "modify file"
-❌ NEVER: "search", "find", "show", "read" → use code_search!
+## polly_agent - STRICT RULES
 
-**WORKFLOW:**
-1. code_search/github tools FIRST → gather context
-2. polly_agent(task="Fix X in file Y - [full details]") → edit code
-3. polly_agent(push) → push changes | polly_agent(open_pr) → create PR
+**polly_agent is ONLY for writing/editing code. NOTHING ELSE.**
+
+⛔ **NEVER USE polly_agent FOR:**
+- Questions or inquiries of any kind
+- Reading/searching/finding/understanding code → use `code_search`
+- Anything that doesn't require actual file modifications
+
+✅ **ONLY USE polly_agent WHEN:**
+User explicitly asks you to make code changes, create a PR, or push commits.
+
+**When in doubt: DON'T use polly_agent. Use code_search instead.**
 
 **RULES:**
+- `code_search` FIRST → understand the code before editing
+- After edits: use `push`/`open_pr` to deploy
 - ALWAYS quote agent_response in your reply
-- After edits done: use `push`/`open_pr`, NOT `task` again
 - Confirm destructive ops (merge, delete, close)
 
 ## Formatting (Context-Aware)
