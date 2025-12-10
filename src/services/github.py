@@ -1493,7 +1493,7 @@ async def tool_subscribe_issue(
 ) -> dict:
     """Subscribe a user to issue notifications."""
     # Get current issue state for tracking
-    issue = await github_graphql.get_issue(issue_number)
+    issue = await github_graphql.get_issue_full(issue_number)
     initial_state = None
     if issue and "error" not in issue:
         initial_state = {
