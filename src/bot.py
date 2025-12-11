@@ -437,11 +437,37 @@ class PollyBot(commands.Bot):
 bot = PollyBot()
 
 
+@bot.tree.context_menu(name="Assist")
+async def assist_context_menu(interaction: discord.Interaction, message: discord.Message):
+    """Context menu command - right-click message → Apps → Assist. Treats message as if user @mentioned bot."""
+    # Acknowledge silently - no response needed, thread will be created on the message
+    await interaction.response.defer()
+
+    # Treat target message exactly as if it @mentioned the bot
+    text = message.content or ""
+    image_urls = extract_image_urls(message)
+
+    if not text and image_urls:
+        text = "[User attached screenshot(s)]"
+    elif not text:
+        text = "[User mentioned bot without text - greet them or ask how you can help]"
+
+    await start_conversation(message, text, image_urls)
+    await interaction.delete_original_response()
+
+
 @bot.event
 async def on_ready():
     """Called when the bot is ready."""
     logger.info(f"{bot.user} is now online!")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+    # Sync application commands (context menus, slash commands)
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"Synced {len(synced)} application command(s)")
+    except Exception as e:
+        logger.error(f"Failed to sync commands: {e}")
 
     # Register persistent views for terminal buttons (survive restarts)
     # These use fixed custom_id and look up terminal info at click time
