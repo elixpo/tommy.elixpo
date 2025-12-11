@@ -462,9 +462,10 @@ async def on_ready():
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
     # Sync application commands (context menus, slash commands)
+    # Global sync - may take up to 1 hour to propagate
     try:
         synced = await bot.tree.sync()
-        logger.info(f"Synced {len(synced)} application command(s)")
+        logger.info(f"Synced {len(synced)} global command(s)")
     except Exception as e:
         logger.error(f"Failed to sync commands: {e}")
 
