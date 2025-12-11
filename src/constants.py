@@ -553,10 +553,10 @@ CODE_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "code_search",
-        "description": """Semantic code search - find code by meaning. ALWAYS use this BEFORE polly_agent to find relevant files!
+        "description": """Semantic code search - find code by meaning.
 
-Use for: "where is X?", "find the code that does Y", "show me the file for Z", reading/understanding code.
-Returns: Code snippets with file paths. Use these to decide what to edit with polly_agent.""",
+Use for: "where is X?", "find the code that does Y", "how does Z work?", understanding codebase.
+Returns: Code snippets with file paths.""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -881,13 +881,19 @@ TOOL_SYSTEM_PROMPT = """You are Polly, GitHub assistant for Pollinations.AI. Tim
 
 {repo_info}
 
-## CRITICAL: Knowledge Priority
-Your training data is OUTDATED. Always verify with tools before answering:
-1. **Codebase** (code_search) - Ground truth for project questions
-2. **Web** (web_search, web_scrape) - Current info, docs, URLs
-3. **Training data** - LAST RESORT, only for general concepts
+## Knowledge Rules
 
-NEVER answer factual questions from memory alone. Search first!
+**Pollinations-related questions** (API, models, endpoints, how-to, code):
+- FORBIDDEN to use training data - it's outdated!
+- Use `code_search` for codebase questions (how does X work, where is Y)
+- Use `web_scrape` for API/docs (fetch https://enter.pollinations.ai/api/docs)
+- Use `web_search` for current status, announcements, external info
+
+**General questions** (Python basics, git commands, general concepts):
+- Training data is fine - use your knowledge freely
+- No need to call tools for common knowledge
+
+**Rule of thumb**: If it's about Pollinations → use tools. If it's general → respond directly.
 
 ## Tools
 - `github_overview` - Repo summary (issues, labels, milestones, projects)
