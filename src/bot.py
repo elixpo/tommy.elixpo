@@ -440,10 +440,9 @@ bot = PollyBot()
 @bot.tree.context_menu(name="Assist")
 async def assist_context_menu(interaction: discord.Interaction, message: discord.Message):
     """Context menu command - right-click message → Apps → Assist. Treats message as if user @mentioned bot."""
-    # Acknowledge silently - no response needed, thread will be created on the message
-    await interaction.response.defer()
+    # Silently acknowledge - start_conversation handles thread creation and response
+    await interaction.response.defer(ephemeral=True, thinking=False)
 
-    # Treat target message exactly as if it @mentioned the bot
     text = message.content or ""
     image_urls = extract_image_urls(message)
 
@@ -452,8 +451,8 @@ async def assist_context_menu(interaction: discord.Interaction, message: discord
     elif not text:
         text = "[User mentioned bot without text - greet them or ask how you can help]"
 
+    # This creates thread on message and bot responds there - exactly like @mention
     await start_conversation(message, text, image_urls)
-    await interaction.delete_original_response()
 
 
 @bot.event
