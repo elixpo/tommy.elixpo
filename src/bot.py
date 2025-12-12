@@ -127,9 +127,13 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
         try:
             # Thread ID == starter message ID, fetch from PARENT channel
             if thread.parent:
+                logger.info(f"Fetching starter message: thread.id={thread.id}, parent={thread.parent}")
                 starter = await thread.parent.fetch_message(thread.id)
+                logger.info(f"Starter message fetched: author={starter.author if starter else None}, content={starter.content[:100] if starter and starter.content else 'EMPTY'}")
                 if starter and starter.content:
                     thread_context += f"\n\n**THIS IS THE PARENT/STARTER MESSAGE THAT THIS THREAD WAS CREATED FROM:**\n{starter.author.name}: {starter.content}"
+            else:
+                logger.warning(f"Thread {thread.id} has no parent channel")
         except Exception as e:
             logger.warning(f"Failed to fetch starter message: {e}")
         messages.append({"role": "system", "content": thread_context})
