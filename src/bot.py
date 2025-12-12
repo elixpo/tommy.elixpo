@@ -122,8 +122,12 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
         })
 
     try:
-        # Add thread name and parent message as context
-        thread_context = f"Thread: {thread.name}"
+        # Add thread name as context
+        messages.append({"role": "system", "content": f"Thread: {thread.name}"})
+        
+        # Fetch the starter message (the message the thread was created from)
+        # and add it as the FIRST user message so AI sees it as the original question
+        starter_msg = None
         try:
             # Thread ID == starter message ID, fetch from PARENT channel
             if thread.parent:
@@ -131,12 +135,15 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
                 starter = await thread.parent.fetch_message(thread.id)
                 logger.info(f"Starter message fetched: author={starter.author if starter else None}, content={starter.content[:100] if starter and starter.content else 'EMPTY'}")
                 if starter and starter.content:
-                    thread_context += f"\n\n**THIS IS THE PARENT/STARTER MESSAGE THAT THIS THREAD WAS CREATED FROM:**\n{starter.author.name}: {starter.content}"
+                    # Add starter as first user message in conversation
+                    starter_msg = {
+                        "role": "user",
+                        "content": f"[{starter.author.name}] (THREAD STARTER MESSAGE): {starter.content}"
+                    }
             else:
                 logger.warning(f"Thread {thread.id} has no parent channel")
         except Exception as e:
             logger.warning(f"Failed to fetch starter message: {e}")
-        messages.append({"role": "system", "content": thread_context})
 
         # Fetch most recent messages (newest first), then reverse to chronological order
         fetched = []
@@ -152,6 +159,9 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
                     "content": f"[{msg.author.name}]: {msg.content}"
                 })
         # Reverse to chronological order (oldest to newest)
+        # Add starter message FIRST, then thread messages
+        if starter_msg:
+            messages.append(starter_msg)
         messages.extend(reversed(fetched))
     except Exception as e:
         logger.warning(f"Failed to fetch thread history: {e}")
@@ -578,9 +588,7 @@ async def on_message(message: discord.Message):
 
         # If no text but replying or has images, let AI handle it
         if not text and not image_urls:
-            # In a thread, if user just mentions bot without text, they want a response
-            # to the starter message (original question that started the thread)
-            text = "[User mentioned bot in thread without additional text - respond to the STARTER MESSAGE shown in thread context above. That is their question.]"
+            text = "[User mentioned bot - respond to the conversation context]"
         if not text and image_urls:
             text = "[User attached screenshot(s)]"
 
