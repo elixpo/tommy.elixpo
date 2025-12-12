@@ -578,7 +578,9 @@ async def on_message(message: discord.Message):
 
         # If no text but replying or has images, let AI handle it
         if not text and not image_urls:
-            text = "[User mentioned bot without text - greet them or ask how you can help]"
+            # In a thread, if user just mentions bot without text, they want a response
+            # to the starter message (original question that started the thread)
+            text = "[User mentioned bot in thread without additional text - respond to the STARTER MESSAGE shown in thread context above. That is their question.]"
         if not text and image_urls:
             text = "[User attached screenshot(s)]"
 
