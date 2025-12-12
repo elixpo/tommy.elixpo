@@ -122,8 +122,17 @@ async def fetch_thread_history(thread: discord.Thread, limit: int = THREAD_HISTO
         })
 
     try:
+        # Add thread name and parent message as context
+        thread_context = f"Thread: {thread.name}"
+        try:
+            starter = await thread.fetch_message(thread.id)  # Thread ID == starter message ID
+            if starter and starter.content:
+                thread_context += f"\nOriginal message by {starter.author.name}: {starter.content}"
+        except Exception:
+            pass
+        messages.append({"role": "system", "content": thread_context})
+
         # Fetch most recent messages (newest first), then reverse to chronological order
-        # This ensures we get the LATEST conversation context, not oldest messages
         fetched = []
         async for msg in thread.history(limit=limit):  # newest first (default)
             if msg.author.bot:
