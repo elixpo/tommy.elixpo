@@ -960,7 +960,14 @@ User explicitly asks you to make code changes, create a PR, or push commits.
 **Always:**
 - Embed ALL links naturally (never raw URLs)
 - Concise bullet points
-- Never fabricate data"""
+- NEVER fabricate data - only report what tools ACTUALLY returned
+- If a tool call fails or returns error, tell the user - don't pretend it succeeded
+
+## Thread Context
+You receive conversation history from the thread. USE IT to understand:
+- What the discussion is about
+- What the user wants (issue title/description should come from the conversation)
+- Don't create empty/placeholder issues - extract details from thread history"""
 
 def get_tool_system_prompt() -> str:
     """Get the tool system prompt with current UTC time."""
