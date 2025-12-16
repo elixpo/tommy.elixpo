@@ -27,9 +27,6 @@ logger = logging.getLogger(__name__)
 PR_MERGE_CHANNEL_ID = 1433858964658852081
 PR_MERGE_WEBHOOK_ID = 1433141915397652532
 
-# Supported image extensions
-IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
-
 # Thread settings
 THREAD_AUTO_ARCHIVE_MINUTES = 60
 THREAD_HISTORY_LIMIT = 50
@@ -49,18 +46,28 @@ def is_admin(user: discord.User | discord.Member) -> bool:
     return False
 
 
-def extract_image_urls(message: discord.Message) -> list[str]:
-    """Extract image URLs from Discord message attachments and embeds."""
-    image_urls = []
+def extract_attachment_urls(message: discord.Message) -> list[str]:
+    """
+    Extract ALL attachment URLs from Discord message.
+
+    The AI model can understand images, PDFs, and other files via their CDN URLs
+    when passed in OpenAI image_url format. So we grab everything, not just images.
+    """
+    urls = []
+    # All attachments (images, PDFs, files, etc.)
     for attachment in message.attachments:
-        if any(attachment.filename.lower().endswith(ext) for ext in IMAGE_EXTENSIONS):
-            image_urls.append(attachment.url)
+        urls.append(attachment.url)
+    # Also grab embedded images
     for embed in message.embeds:
         if embed.image and embed.image.url:
-            image_urls.append(embed.image.url)
+            urls.append(embed.image.url)
         if embed.thumbnail and embed.thumbnail.url:
-            image_urls.append(embed.thumbnail.url)
-    return image_urls
+            urls.append(embed.thumbnail.url)
+    return urls
+
+
+# Keep old name for backward compatibility
+extract_image_urls = extract_attachment_urls
 
 
 async def _code_search_handler(query: str, top_k: int = 10, **kwargs) -> dict:
