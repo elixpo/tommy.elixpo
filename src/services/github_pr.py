@@ -1543,7 +1543,7 @@ async def tool_github_pr(
     thread_id: str = None,
     # Get file at ref
     file_path: str = None,
-    ref: str = None,
+    ref: str = "main",  # Default to main branch (pollinations/pollinations uses main, not master)
     # Injected context
     reporter: str = "Discord User"
 ) -> dict:
@@ -1613,8 +1613,8 @@ async def tool_github_pr(
         return await github_pr_manager.get_pr_checks(pr_number)
 
     elif action == "get_file_at_ref":
-        if not file_path or not ref:
-            return {"error": "file_path and ref required (e.g., file_path='.github/workflows/ci.yml', ref='feat-branch')"}
+        if not file_path:
+            return {"error": "file_path required (e.g., file_path='.github/workflows/ci.yml', ref='main' or branch name)"}
         return await github_pr_manager.get_file_at_ref(file_path, ref)
 
     # WRITE ACTIONS (admin)
