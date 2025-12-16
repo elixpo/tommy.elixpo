@@ -277,12 +277,17 @@ class GitHubManager:
         description: str,
         reporter: str,
         participants: Optional[list[str]] = None,
-        image_urls: Optional[list[str]] = None
+        image_urls: Optional[list[str]] = None,
+        user_role_ids: Optional[list[int]] = None
     ) -> dict:
         """
         Create a GitHub issue directly via the API.
         Returns the actual issue number from the API response.
+
+        Team members (with TEAM_ROLE_ID) don't get inbox:discord label.
         """
+        from ..constants import TEAM_ROLE_ID
+
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -298,10 +303,14 @@ class GitHubManager:
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues"
 
+        # Skip inbox:discord label for team members
+        is_team_member = user_role_ids and TEAM_ROLE_ID in user_role_ids
+        labels = [] if is_team_member else ["inbox:discord"]
+
         payload = {
             "title": title,
             "body": body,
-            "labels": ["inbox:discord"]
+            "labels": labels
         }
 
         try:
@@ -1008,6 +1017,8 @@ async def tool_github_issue(
     channel_id: int = 0,
     guild_id: int = None,
     reporter: str = "Discord User",
+    # User role IDs for team member detection (skip inbox:discord label)
+    user_role_ids: list[int] = None,
     # New: context dict injected by pollinations client
     _context: dict = None,
     **kwargs  # Catch any extra args
@@ -1092,7 +1103,8 @@ async def tool_github_issue(
         return await github_manager.create_issue(
             title=title,
             description=description,
-            reporter=reporter
+            reporter=reporter,
+            user_role_ids=user_role_ids
         )
 
     elif action == "comment":
@@ -1292,7 +1304,8 @@ async def tool_github_issue(
         create_result = await github_manager.create_issue(
             title=title,
             description=description,
-            reporter=reporter
+            reporter=reporter,
+            user_role_ids=user_role_ids
         )
         if not create_result.get("success"):
             return create_result

@@ -950,18 +950,16 @@ async def _handle_code_task(
 
         if is_continuation:
             # Resume existing session - maintains ccr conversation context!
-            ccr_flags = f"-p --dangerously-skip-permissions --resume {session_uuid}"
+            ccr_flags = f"--dangerously-skip-permissions --resume {session_uuid}"
             logger.info(f"Resuming ccr session {session_uuid} for task {task_id}")
         else:
             # Create new session with deterministic ID
-            ccr_flags = f"-p --dangerously-skip-permissions --session-id {session_uuid}"
+            ccr_flags = f"--dangerously-skip-permissions --session-id {session_uuid}"
             logger.info(f"Creating ccr session {session_uuid} for task {task_id}")
 
-        # Use printf piped to ccr - avoids shell escaping issues with quotes/newlines
-        # printf %s preserves the prompt exactly, and ccr reads from stdin with -p flag
-        # Escape special chars for printf: backslash and percent
-        safe_prompt = full_prompt.replace('\\', '\\\\').replace('%', '%%')
-        ccr_cmd = f"printf '%s' {shlex.quote(safe_prompt)} | ccr code {ccr_flags}"
+        # Build command: ccr code -p "prompt" [flags]
+        # -p must come immediately before the prompt, other flags after
+        ccr_cmd = f"ccr code -p {shlex.quote(full_prompt)} {ccr_flags}"
 
         logger.info(f"Running ccr: {task[:100]}...")
         start_time = asyncio.get_running_loop().time()

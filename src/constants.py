@@ -18,6 +18,10 @@ MAX_ERROR_LENGTH = 200
 # Default Values
 DEFAULT_REPO = "pollinations/pollinations"
 
+# Discord Role IDs
+# Team members with this role won't get inbox:discord label on issues they create
+TEAM_ROLE_ID = 1447964393148125194
+
 # Load repo info for AI context
 _repo_info_path = os.path.join(os.path.dirname(__file__), "data", "repo_info.txt")
 try:
@@ -958,7 +962,12 @@ User explicitly asks you to make code changes, create a PR, or push commits.
 - Code: \`inline\` or \`\`\`lang blocks
 
 **Always:**
-- Embed ALL links naturally (never raw URLs)
+- **EMBED LINKS NATURALLY** - NEVER mention issues, PRs, branches, commits, or URLs without clickable links!
+  - Issue/PR: "Fixed in [#123](<https://github.com/pollinations/pollinations/issues/123>)"
+  - Branch: "Created branch [`fix-bug`](<https://github.com/pollinations/pollinations/tree/fix-bug>)"
+  - Commit: "See [commit abc123](<https://github.com/pollinations/pollinations/commit/abc123>)"
+  - File: "Check [`src/app.py`](<https://github.com/pollinations/pollinations/blob/main/src/app.py>)"
+  - External: "See the [docs](<https://example.com/docs>)"
 - Concise bullet points
 - NEVER fabricate data - only report what tools ACTUALLY returned
 - If a tool call fails or returns error, tell the user - don't pretend it succeeded
@@ -973,7 +982,22 @@ You receive conversation history from the thread. USE IT to understand:
 ## Workflow Tips
 - **Create + assign**: First create the issue, then call assign with the returned issue_number
 - **Create + label**: First create the issue, then call label with the returned issue_number
-- Multi-step operations need sequential tool calls - create returns the issue_number you need"""
+- Multi-step operations need sequential tool calls - create returns the issue_number you need
+
+## Edit vs Comment - IMPORTANT
+**Prefer EDITING over adding new comments when the SAME USER wants changes:**
+
+- User asks to "fix", "update", "change", "correct" an issue THEY created → use `edit` action (not comment)
+- User asks to "fix", "update", "change" a comment THEY made → use `edit_comment` action
+- The reporter name in issue/comment body shows who created it (e.g., "Reported by: `username`")
+- Only the original author can request edits - if different user, add a comment instead
+- When editing: preserve useful existing content, just fix/update what was requested
+
+**Examples:**
+- User "alice" created issue #50, later says "fix the typo in the title" → `edit` issue #50
+- User "alice" says "add more details to my issue #50" → `edit` issue #50 (update body)
+- User "bob" says "fix issue #50's description" → add `comment` (bob didn't create it)
+- User "alice" says "update my comment on #50" → `edit_comment` (need comment_id from issue)"""
 
 def get_tool_system_prompt() -> str:
     """Get the tool system prompt with current UTC time."""

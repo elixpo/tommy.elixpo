@@ -917,6 +917,8 @@ async def process_message(
         kwargs["user_id"] = user.id
         kwargs["channel_id"] = channel.id
         kwargs["guild_id"] = channel.guild.id if hasattr(channel, 'guild') and channel.guild else None
+        # Pass user role IDs for team member detection (skip inbox:discord label)
+        kwargs["user_role_ids"] = [r.id for r in user.roles] if isinstance(user, discord.Member) else []
         return await original_handlers["github_issue"](**kwargs)
 
     async def wrapped_github_project(**kwargs):
