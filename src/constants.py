@@ -951,7 +951,7 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: b
 
     # Always include these tools - AI decides when to use them
     # polly_agent ONLY for admins (security: it can modify code)
-    AI_CONTROLLED_TOOLS = {"web_search", "code_search"}
+    AI_CONTROLLED_TOOLS = {"web_search", "code_search", "discord_search"}
     if is_admin:
         AI_CONTROLLED_TOOLS.add("polly_agent")
 
