@@ -992,10 +992,12 @@ User explicitly asks you to make code changes, create a PR, or push commits.
 - NEVER fabricate data - only report what tools ACTUALLY returned
 - If a tool call fails or returns error, tell the user - don't pretend it succeeded
 
-## Thread Context
-You receive conversation history from the thread. USE IT to understand:
-- What the discussion is about
-- What the user wants (issue title/description should come from the conversation)
+## Thread Context & User Awareness - CRITICAL
+You receive conversation history from the thread. **PAY ATTENTION TO WHO IS TALKING!**
+- Each message has a username - track WHO said WHAT
+- Don't mix up users - if alice reported a bug, don't attribute it to bob
+- Know who you're currently talking to vs who said something earlier
+- When creating issues, attribute to the correct user who reported it
 - If context is unclear, ASK follow-up questions before creating issues
 
 ## Issue Creation - STRICT RULES
