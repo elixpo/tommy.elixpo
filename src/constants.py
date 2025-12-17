@@ -660,13 +660,101 @@ NOT for: Live search (use web_search), GitHub (use github_* tools).""",
 }
 
 
+# =============================================================================
+# DISCORD SEARCH TOOL - Full guild search capabilities
+# =============================================================================
+
+DISCORD_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "discord_search",
+        "description": """Search EVERYTHING in the Discord server.
+
+Actions:
+- messages: Search message content (query required) - find past discussions, decisions, context
+- members: Search members by name/nickname, or filter by role
+- channels: Search channels by name or type (text, voice, forum, category)
+- threads: Search threads by name (includes archived)
+- roles: Search roles by name, optionally include member lists
+
+Use for: "what did we discuss about X?", "who has role Y?", "find the channel for Z", "search messages from user".""",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["messages", "members", "channels", "threads", "roles"],
+                    "description": "What to search"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Search term (required for messages, optional for others)"
+                },
+                "channel_id": {
+                    "type": "integer",
+                    "description": "Filter messages to specific channel"
+                },
+                "channel_name": {
+                    "type": "string",
+                    "description": "Find channel by name (alternative to channel_id)"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "description": "Filter messages by author"
+                },
+                "role_id": {
+                    "type": "integer",
+                    "description": "Filter members by role"
+                },
+                "role_name": {
+                    "type": "string",
+                    "description": "Find role by name (alternative to role_id)"
+                },
+                "channel_type": {
+                    "type": "string",
+                    "enum": ["text", "voice", "forum", "category", "news", "stage"],
+                    "description": "Filter channels by type"
+                },
+                "include_archived": {
+                    "type": "boolean",
+                    "description": "Include archived threads (default true)"
+                },
+                "include_members": {
+                    "type": "boolean",
+                    "description": "Include member list for roles (default false)"
+                },
+                "has": {
+                    "type": "string",
+                    "enum": ["link", "embed", "file", "video", "image", "sound", "sticker"],
+                    "description": "Filter messages by attachment type"
+                },
+                "before": {
+                    "type": "string",
+                    "description": "Messages before this date (YYYY-MM-DD) or message ID"
+                },
+                "after": {
+                    "type": "string",
+                    "description": "Messages after this date (YYYY-MM-DD) or message ID"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 25)"
+                }
+            },
+            "required": ["action"]
+        }
+    }
+}
+
+
 def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> list:
     """Get tool list with optional features."""
     tools = base_tools.copy()
 
-    # Always include web_search and web_scrape
+    # Always include web_search, web_scrape, and discord_search
     tools.append(WEB_SEARCH_TOOL)
     tools.append(WEB_SCRAPE_TOOL)
+    tools.append(DISCORD_SEARCH_TOOL)
 
     # Conditionally include code_search if embeddings enabled
     if embeddings_enabled:
@@ -1013,7 +1101,8 @@ ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, mil
 - `github_custom` - Raw data (commits, history, stats)
 - `web_search` - Web search (mode="fast"|"reasoning")
 - `web_scrape` - Scrape ANY URL for content/data (action="scrape"|"extract"|"multi")
-- `code_search` - Semantic code search"""
+- `code_search` - Semantic code search
+- `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
 # Tools section for NON-ADMIN users - read-only + create/comment
 NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, milestones, projects)
@@ -1023,7 +1112,8 @@ NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels,
 - `github_custom` - Raw data (commits, history, stats)
 - `web_search` - Web search (mode="fast"|"reasoning")
 - `web_scrape` - Scrape ANY URL for content/data (action="scrape"|"extract"|"multi")
-- `code_search` - Semantic code search"""
+- `code_search` - Semantic code search
+- `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
 # polly_agent rules section - ONLY shown to admins
 POLLY_AGENT_SECTION = """

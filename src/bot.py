@@ -356,6 +356,11 @@ class PollyBot(commands.Bot):
         pollinations_client.register_tool_handler("web_scrape", web_scrape_handler)
         logger.info("Registered web_scrape tool handler (Crawl4AI)")
 
+        # Register discord_search handler (full guild search capabilities)
+        from .services.discord_search import tool_discord_search
+        pollinations_client.register_tool_handler("discord_search", tool_discord_search)
+        logger.info("Registered discord_search tool handler")
+
         # Initialize and start the issue notifier
         self.issue_notifier = init_notifier(self)
         await self.issue_notifier.start()
@@ -849,6 +854,8 @@ async def process_message(
         "discord_channel": channel,
         "discord_thread_id": session.thread_id,
         "discord_bot": bot,
+        # For discord_search
+        "discord_guild": channel.guild if hasattr(channel, 'guild') else None,
     }
 
     try:
