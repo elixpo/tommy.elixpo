@@ -1019,6 +1019,7 @@ ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, mil
 NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, milestones, projects)
 - `github_issue` - Issues: get, search, create, comment (read + create only)
 - `github_pr` - PRs: get, list, comment (read-only)
+- `github_project` - Projects V2: list, view (read-only)
 - `github_custom` - Raw data (commits, history, stats)
 - `web_search` - Web search (mode="fast"|"reasoning")
 - `web_scrape` - Scrape ANY URL for content/data (action="scrape"|"extract"|"multi")
