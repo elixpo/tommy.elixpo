@@ -672,7 +672,7 @@ DISCORD_SEARCH_TOOL = {
 
 Actions:
 - messages: Search message content (query required) - find past discussions, decisions, context
-- members: Search members by name/nickname, or filter by role
+- members: Search members by name/nickname, look up by user_id, or filter by role
 - channels: Search channels by name or type (text, voice, forum, category)
 - threads: Search threads by name (includes archived)
 - roles: Search roles by name, optionally include member lists
@@ -700,7 +700,7 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
                 },
                 "user_id": {
                     "type": "integer",
-                    "description": "Filter messages by author"
+                    "description": "Look up member by ID (action=members), or filter messages by author (action=messages)"
                 },
                 "role_id": {
                     "type": "integer",

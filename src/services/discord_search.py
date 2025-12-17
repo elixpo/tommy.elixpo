@@ -170,6 +170,7 @@ class DiscordSearchClient:
         self,
         guild: discord.Guild,
         query: Optional[str] = None,
+        user_id: Optional[int] = None,
         role_id: Optional[int] = None,
         limit: int = 100,
     ) -> Dict[str, Any]:
@@ -179,6 +180,7 @@ class DiscordSearchClient:
         Args:
             guild: The Discord guild object
             query: Search by name/nickname (partial match)
+            user_id: Look up specific member by ID
             role_id: Filter by role
             limit: Max results
 
@@ -188,7 +190,17 @@ class DiscordSearchClient:
         try:
             members = []
 
-            if query:
+            if user_id:
+                # Direct lookup by user ID
+                member = guild.get_member(user_id)
+                if not member:
+                    # Try fetching from API if not in cache
+                    try:
+                        member = await guild.fetch_member(user_id)
+                    except discord.NotFound:
+                        return {"success": True, "count": 0, "members": [], "note": f"User {user_id} not found in this server"}
+                members = [member]
+            elif query:
                 # Use guild.query_members for name search
                 found = await guild.query_members(query=query, limit=limit)
                 members = found
@@ -488,7 +500,7 @@ async def tool_discord_search(
         query: Search term (required for messages)
         channel_id: Filter messages to specific channel
         channel_name: Find channel by name (alternative to channel_id)
-        user_id: Filter messages by author
+        user_id: Look up member by ID, or filter messages by author
         role_id: Filter members by role
         role_name: Find role by name (alternative to role_id)
         channel_type: Filter channels by type (text, voice, forum, category)
@@ -577,6 +589,7 @@ async def tool_discord_search(
         return await discord_search_client.search_members(
             guild=guild,
             query=query,
+            user_id=user_id,
             role_id=role_id,
             limit=limit,
         )
