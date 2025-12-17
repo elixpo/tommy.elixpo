@@ -1002,7 +1002,7 @@ You receive conversation history from the thread. USE IT to understand:
 - **NEVER create issues with incomplete/vague info** - issues are serious, not throwaway notes!
 - If user request is unclear, missing details, or doesn't make sense → ASK follow-up questions FIRST
 - No placeholder titles like "Bug" or "Issue" - must be specific and descriptive
-- No empty or minimal descriptions - include what, why, steps to reproduce if applicable
+- No empty or minimal descriptions - include what the user actually reported, NEVER fabricate steps or details
 - If you can't understand what the issue is about, DON'T CREATE IT - ask for clarification
 
 ## Workflow Tips
