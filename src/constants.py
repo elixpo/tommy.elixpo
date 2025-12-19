@@ -1117,6 +1117,15 @@ Examples of how to handle user requests:
 - Use `history` for "recent/latest" requests, `messages` for keyword search
 - Be proactive: if user asks about a discussion, SEARCH for it!
 
+**PROACTIVE CONTEXT GATHERING:**
+When pinged out of the blue with vague requests like:
+- "make an issue about that bug" → Search recent channel history for bug discussions
+- "what did we decide about X?" → Search messages for X
+- "can you summarize the convo?" → Get channel history
+- "create issue from earlier discussion" → Search for relevant messages first
+
+**Don't ask "what bug?" - SEARCH for it!** Use discord_search to find context before asking clarifying questions.
+
 ## Resource Limits - USE JUDGMENT
 Users may ask for massive data dumps: "list all members", "all issues ever", "every channel", etc.
 **Don't blindly comply!** Use your judgment:
