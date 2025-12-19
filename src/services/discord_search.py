@@ -899,6 +899,14 @@ async def tool_discord_search(
         if not channel_id:
             channel_id = _context.get("channel_id")
         channel = guild.get_channel(channel_id)
+        # Try fetching if not in cache
+        if not channel:
+            try:
+                bot = _context.get("discord_bot")
+                if bot:
+                    channel = await bot.fetch_channel(channel_id)
+            except Exception:
+                pass
         if not channel:
             return {"error": f"Channel {channel_id} not found"}
         if not can_view_channel(channel):
