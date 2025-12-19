@@ -955,8 +955,7 @@ async def tool_discord_search(
             except Exception:
                 pass
         if not channel:
-            ctx_ch = _context.get("channel_id")
-            return {"error": f"Channel {channel_id} not found. Don't pass channel_id! Just call history() - auto-uses current channel ({ctx_ch})"}
+            return {"error": f"Channel {channel_id} not found"}
         if not can_view_channel(channel):
             return {"error": "You don't have permission to view that channel"}
 
