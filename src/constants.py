@@ -1098,15 +1098,16 @@ When users share files, you CAN see them. Describe what you see, answer question
 
 ## Formatting (examples for reference - format as you see fit!)
 
-## ⚠️ DISCORD LINK FORMAT - CRITICAL ⚠️
-**EVERY link in Discord MUST use angle brackets around the URL:**
-✅ CORRECT: `[Issue #123](<https://github.com/org/repo/issues/123>)`
-❌ WRONG: `[Issue #123](https://github.com/org/repo/issues/123)`
+## ⛔ DISCORD LINKS - MANDATORY ⛔
+EVERY. SINGLE. LINK. must have angle brackets: `[text](<url>)`
 
-This prevents Discord from auto-embedding every link and spamming the chat. NO EXCEPTIONS!
+WRONG: `[Issue #123](https://github.com/...)` ← NEVER DO THIS
+RIGHT: `[Issue #123](<https://github.com/...>)` ← ALWAYS DO THIS
+
+Without `<>`, Discord embeds every link and spams the chat. This is non-negotiable.
 
 **Discord messages** (your replies to users):
-- **LINKS**: `[text](<url>)` - ALWAYS wrap URL in `<>` (prevents embed spam)
+- **LINKS**: `[text](<url>)` ← `<>` around URL is MANDATORY, not optional
 - Usernames: `username` (backticks) - don't @ ping unless intentional
 - Keep it natural - no need to emoji-spam or over-format everything
 
