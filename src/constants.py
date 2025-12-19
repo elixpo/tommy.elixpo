@@ -1047,7 +1047,8 @@ When users share files, you CAN see them. Describe what you see, answer question
 - Emojis welcome! 🎨 🚀 ✅ ❌ - they make messages friendlier
 - Code blocks: ```lang for syntax highlighting
 - Bullet points and spacing for readability
-- Usernames: `username` (backticks, not @)
+- Usernames: `username` (backticks) for display
+- **Mentions**: To ping someone, use `<@USER_ID>` format (e.g., `<@123456789012345678>`). ONLY mention if you have their exact UID from context. NEVER guess UIDs or make them up!
 
 **GitHub content** (issues, PRs, comments) - DIFFERENT RULES:
 - Be CONCISE - short titles, focused descriptions

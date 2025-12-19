@@ -437,7 +437,7 @@ bot = PollyBot()
 @bot.tree.context_menu(name="Assist")
 async def assist_context_menu(interaction: discord.Interaction, message: discord.Message):
     """Context menu command - right-click message → Apps → Assist. Treats message as if user @mentioned bot."""
-    # Silently acknowledge - start_conversation handles thread creation and response
+    # Silently acknowledge
     await interaction.response.defer(ephemeral=True, thinking=False)
 
     text = message.content or ""
@@ -448,8 +448,46 @@ async def assist_context_menu(interaction: discord.Interaction, message: discord
     elif not text:
         text = "[User mentioned bot without text - greet them or ask how you can help]"
 
-    # This creates thread on message and bot responds there - exactly like @mention
-    await start_conversation(message, text, image_urls)
+    # Check if already in a thread - if so, work directly in that thread
+    if isinstance(message.channel, discord.Thread):
+        # Already in a thread - get or create session and process directly
+        session = session_manager.get_session(message.channel.id)
+        if not session:
+            # Create session for this thread
+            session = session_manager.create_session(
+                channel_id=message.channel.parent_id or message.channel.id,
+                thread_id=message.channel.id,
+                user_id=message.author.id,
+                user_name=str(message.author),
+                initial_message=text,
+                topic_summary=pollinations_client.get_topic_summary_fast(text),
+                image_urls=image_urls
+            )
+
+        # Add to session and process like a normal thread message
+        session_manager.add_to_session(
+            session=session,
+            role="user",
+            content=text,
+            author=str(message.author),
+            author_id=message.author.id,
+            image_urls=image_urls
+        )
+
+        async with message.channel.typing():
+            thread_history = await fetch_thread_history(message.channel)
+            await process_message(
+                channel=message.channel,
+                user=message.author,
+                text=text,
+                image_urls=image_urls,
+                session=session,
+                thread_history=thread_history,
+                source_message=message
+            )
+    else:
+        # Not in thread - create one (normal flow)
+        await start_conversation(message, text, image_urls)
 
 
 @bot.event
@@ -759,7 +797,8 @@ async def start_conversation(message: discord.Message, text: str, image_urls: li
             user=message.author,
             text=text,
             image_urls=image_urls,
-            session=session
+            session=session,
+            source_message=message
         )
 
 
@@ -812,7 +851,8 @@ async def handle_thread_message(message: discord.Message, session: ConversationS
             image_urls=image_urls,
             session=session,
             thread_history=thread_history,
-            reply_to=message  # Reply to user's message so they get pinged
+            reply_to=message,  # Reply to user's message so they get pinged
+            source_message=message
         )
 
 
@@ -823,7 +863,8 @@ async def process_message(
     image_urls: list[str],
     session: ConversationSession,
     thread_history: Optional[list[dict]] = None,
-    reply_to: Optional[discord.Message] = None
+    reply_to: Optional[discord.Message] = None,
+    source_message: Optional[discord.Message] = None
 ):
     """
     Process a message using native tool calling.
@@ -850,6 +891,8 @@ async def process_message(
         "channel_id": channel.id,
         "guild_id": channel.guild.id if hasattr(channel, 'guild') and channel.guild else None,
         "user_role_ids": [r.id for r in user.roles] if isinstance(user, discord.Member) else [],
+        # For github_issue create - link back to Discord message
+        "message_url": source_message.jump_url if source_message else None,
         # For polly_agent
         "discord_channel": channel,
         "discord_thread_id": session.thread_id,

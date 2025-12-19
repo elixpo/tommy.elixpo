@@ -278,7 +278,9 @@ class GitHubManager:
         reporter: str,
         participants: Optional[list[str]] = None,
         image_urls: Optional[list[str]] = None,
-        user_role_ids: Optional[list[int]] = None
+        user_role_ids: Optional[list[int]] = None,
+        reporter_id: Optional[int] = None,
+        message_url: Optional[str] = None
     ) -> dict:
         """
         Create a GitHub issue directly via the API.
@@ -298,7 +300,9 @@ class GitHubManager:
             description=description,
             reporter=reporter,
             participants=participants,
-            image_urls=image_urls
+            image_urls=image_urls,
+            reporter_id=reporter_id,
+            message_url=message_url
         )
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues"
@@ -965,7 +969,9 @@ class GitHubManager:
         description: str,
         reporter: str,
         participants: Optional[list[str]] = None,
-        image_urls: Optional[list[str]] = None
+        image_urls: Optional[list[str]] = None,
+        reporter_id: Optional[int] = None,
+        message_url: Optional[str] = None
     ) -> str:
         """Build the formatted issue body."""
         body = description
@@ -980,7 +986,15 @@ class GitHubManager:
             formatted = [f"`{p}`" for p in participants]
             body += f"**Authors:** {', '.join(formatted)}"
         else:
-            body += f"**Author:** `{reporter}`"
+            # Include Discord username and UID
+            author_info = f"`{reporter}`"
+            if reporter_id:
+                author_info += f" (UID: `{reporter_id}`)"
+            body += f"**Author:** {author_info}"
+
+        # Add link back to the Discord message
+        if message_url:
+            body += f"\n**Source:** [View on Discord]({message_url})"
 
         body += "\n\n*Created via Discord*"
 
@@ -1125,7 +1139,9 @@ async def tool_github_issue(
             title=title,
             description=description,
             reporter=reporter,
-            user_role_ids=user_role_ids
+            user_role_ids=user_role_ids,
+            reporter_id=user_id,  # Discord UID from context
+            message_url=_context.get("message_url") if _context else None  # Link back to Discord
         )
 
     elif action == "comment":
@@ -1326,7 +1342,9 @@ async def tool_github_issue(
             title=title,
             description=description,
             reporter=reporter,
-            user_role_ids=user_role_ids
+            user_role_ids=user_role_ids,
+            reporter_id=user_id,
+            message_url=_context.get("message_url") if _context else None
         )
         if not create_result.get("success"):
             return create_result
