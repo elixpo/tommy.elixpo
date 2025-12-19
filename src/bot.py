@@ -52,16 +52,26 @@ def extract_attachment_urls(message: discord.Message) -> list[str]:
 
     The AI model can understand images, PDFs, and other files via their CDN URLs
     when passed in OpenAI image_url format. So we grab everything, not just images.
+
+    Handles:
+    - Direct attachments (uploaded files)
+    - Embedded images (from links)
+    - GIFs from tenor/giphy (embed.video.url contains the actual GIF)
     """
     urls = []
     # All attachments (images, PDFs, files, etc.)
     for attachment in message.attachments:
         urls.append(attachment.url)
-    # Also grab embedded images
+    # Also grab embedded images and GIFs
     for embed in message.embeds:
+        # Regular embedded images
         if embed.image and embed.image.url:
             urls.append(embed.image.url)
-        if embed.thumbnail and embed.thumbnail.url:
+        # Tenor/Giphy GIFs come as video embeds - grab the actual GIF URL
+        if embed.video and embed.video.url:
+            urls.append(embed.video.url)
+        # Thumbnail as fallback (static preview)
+        elif embed.thumbnail and embed.thumbnail.url:
             urls.append(embed.thumbnail.url)
     return urls
 
