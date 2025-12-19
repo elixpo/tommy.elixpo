@@ -833,6 +833,12 @@ async def tool_discord_search(
             if can_view_channel(ch):
                 accessible_channel_ids.add(ch.id)
 
+    # Include threads - they inherit parent channel permissions
+    for thread in guild.threads:
+        parent = guild.get_channel(thread.parent_id)
+        if parent and can_view_channel(parent):
+            accessible_channel_ids.add(thread.id)
+
     action = action.lower()
 
     # AUTO-PARSE MENTIONS from query string
@@ -949,7 +955,8 @@ async def tool_discord_search(
             except Exception:
                 pass
         if not channel:
-            return {"error": f"Channel {channel_id} not found"}
+            ctx_ch = _context.get("channel_id")
+            return {"error": f"Channel {channel_id} not found. Don't pass channel_id! Just call history() - auto-uses current channel ({ctx_ch})"}
         if not can_view_channel(channel):
             return {"error": "You don't have permission to view that channel"}
 
