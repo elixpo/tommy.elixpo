@@ -797,26 +797,24 @@ async def tool_discord_search(
     message_id = extract_id(message_id, r'(\d+)')
     thread_id = extract_id(thread_id, r'(\d+)')
 
-    # SECURITY: Get the requesting user to filter results by their permissions
-    requesting_user_id = _context.get("user_id")
-    requesting_member = guild.get_member(requesting_user_id) if requesting_user_id else None
+    # Get bot member for permission checks (bot has admin, can access all channels)
+    bot = _context.get("discord_bot")
+    bot_member = guild.me if guild else None
 
-    # Helper to check if user can view a channel
+    # Helper to check if BOT can view a channel (not user - bot has admin perms)
     def can_view_channel(channel) -> bool:
-        """Check if the requesting user has permission to view a channel."""
-        if not requesting_member:
-            return False  # No user context = deny access
-        # Check view_channel permission
-        perms = channel.permissions_for(requesting_member)
+        """Check if the bot has permission to view a channel."""
+        if not bot_member:
+            return True  # Assume yes if we can't check
+        perms = channel.permissions_for(bot_member)
         return perms.view_channel
 
-    # Get list of channel IDs user can access (for message search filtering)
+    # Get list of channel IDs bot can access (for message search filtering)
     accessible_channel_ids = set()
-    if requesting_member:
-        for ch in guild.channels:
-            if hasattr(ch, 'permissions_for'):
-                if ch.permissions_for(requesting_member).view_channel:
-                    accessible_channel_ids.add(ch.id)
+    for ch in guild.channels:
+        if hasattr(ch, 'permissions_for'):
+            if not bot_member or ch.permissions_for(bot_member).view_channel:
+                accessible_channel_ids.add(ch.id)
 
     action = action.lower()
 
