@@ -857,13 +857,15 @@ async def tool_discord_search(
 
     # Resolve channel_name to channel_id if provided (only if user can access it)
     if channel_name and not channel_id:
+        found_channel = None
         for ch in guild.channels:
             if channel_name.lower() in ch.name.lower():
                 if can_view_channel(ch):
+                    found_channel = ch
                     channel_id = ch.id
                     break
-                else:
-                    return {"error": f"You don't have permission to access channel '{ch.name}'"}
+        # If channel_name was provided but not found, ignore it (will fall through to default)
+        # Don't error - AI might have guessed wrong
 
     # Verify user can access the specified channel_id
     if channel_id:

@@ -1136,7 +1136,9 @@ When pinged with vague requests:
 - "what did we decide about X?" → `messages` with query="X"
 - "create issue from earlier discussion" → `history` first to get context
 
-**CRITICAL**: For "this channel" requests, use `history` action WITHOUT specifying channel_id - it defaults to the current channel automatically!
+**CRITICAL**: For "this channel" / "current channel" requests:
+- Use `history` action with NO channel_id and NO channel_name params!
+- It auto-defaults to current channel. DON'T guess channel names like "general"!
 
 **NEVER ask "which channel?" or "what bug?" - YOU HAVE THE TOOLS, USE THEM!**
 
