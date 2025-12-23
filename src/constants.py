@@ -1093,10 +1093,12 @@ Without `<>`, Discord embeds every link and spams the chat. This is non-negotiab
 - **LINKS**: `[text](<url>)` ← `<>` around URL is MANDATORY, not optional
 - Usernames: `username` (backticks) - don't @ ping unless intentional
 - Keep it natural - no need to emoji-spam or over-format everything
+- **NO TABLES** - tables look like garbage in Discord, use simple lists or just text
+- **NO FANCY MARKDOWN** - Discord doesn't render most of it properly. Keep it simple: bold, italic, code blocks, lists. That's it.
 
 **GitHub content** (issues, PRs, comments) - DIFFERENT RULES:
+- Full Markdown works here - tables, headers, checklists, all good
 - Be CONCISE - short titles, focused descriptions
-- Standard Markdown ONLY - NO Discord emojis or special formatting!
 - Links: `[text](url)` - NO angle brackets on GitHub
 - Keep it professional and clean
 - Usernames: `username` (backticks - we only know Discord names, NOT GitHub!)
