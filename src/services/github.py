@@ -1060,7 +1060,12 @@ async def tool_github_issue(
         "close", "reopen", "edit", "label", "unlabel", "assign", "unassign",
         "milestone", "lock", "link", "create_sub_issue", "add_sub_issue", "remove_sub_issue"
     }
-    if action in ADMIN_ACTIONS:
+
+    # Exception: Issue #6418 (Seed Upgrade Tracking) can be edited by anyone
+    SEED_TRACKING_ISSUE = 6418
+    is_seed_tracking_edit = (action == "edit" and issue_number == SEED_TRACKING_ISSUE)
+
+    if action in ADMIN_ACTIONS and not is_seed_tracking_edit:
         if not is_admin:
             # SECURITY: Log blocked admin action attempt
             logger.warning(f"SECURITY: Blocked admin action '{action}' for non-admin user {context_user_name} (id={context_user_id})")
