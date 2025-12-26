@@ -615,22 +615,26 @@ WEB_SCRAPE_TOOL = {
     "type": "function",
     "function": {
         "name": "web_scrape",
-        "description": """Full-powered web scraping with Crawl4AI. Multiple extraction strategies.
+        "description": """Full-powered web scraping with Crawl4AI. Multiple extraction strategies + anti-bot bypass.
 
 Actions:
 - scrape: URL → clean markdown
 - extract: URL + LLM extraction (smart, flexible)
-- css_extract: URL + CSS schema (FAST, structured - use for known page structures!)
+- css_extract: URL + CSS schema (FAST, structured - 10-100x faster than LLM!)
 - semantic: URL + cosine clustering (finds related content blocks)
-- regex: URL + pattern extraction (emails, URLs, phones, dates)
+- regex: URL + pattern extraction (emails, URLs, phones, dates, IPs)
 - multi: Multiple URLs concurrently (max 10)
 - fetch_file: Fetch + parse Discord attachment (code, json, logs)
 - parse_file: Parse raw file content directly
 
-Strategy tips:
-- css_extract: 10-100x faster than LLM, use when you know the page structure
-- semantic: Great for messy pages, finds similar content clusters
-- regex: Extract emails, URLs, phones, IPs, dates, currencies without LLM""",
+Anti-bot features:
+- stealth_mode: Avoid detection (modifies navigator, headers)
+- simulate_user: Human-like behavior (delays, mouse movements)
+- magic_mode: Auto bypass (combines stealth + simulation)
+
+Page scanning:
+- scan_full_page: Scroll entire page to load lazy content
+- process_iframes: Extract content from iframes""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -668,7 +672,7 @@ Strategy tips:
                 "content_filter": {
                     "type": "string",
                     "enum": ["bm25", "pruning"],
-                    "description": "Pre-filter content before extraction (bm25=keyword relevance, pruning=remove boilerplate)"
+                    "description": "Pre-filter content (bm25=keyword relevance, pruning=remove boilerplate)"
                 },
                 "filter_query": {
                     "type": "string",
@@ -695,9 +699,37 @@ Strategy tips:
                     "type": "boolean",
                     "description": "Include image URLs in result"
                 },
+                "include_tables": {
+                    "type": "boolean",
+                    "description": "Extract tables as structured data"
+                },
                 "screenshot": {
                     "type": "boolean",
                     "description": "Capture screenshot of page"
+                },
+                "stealth_mode": {
+                    "type": "boolean",
+                    "description": "Enable stealth to avoid bot detection"
+                },
+                "simulate_user": {
+                    "type": "boolean",
+                    "description": "Simulate human behavior (delays, movements)"
+                },
+                "magic_mode": {
+                    "type": "boolean",
+                    "description": "Auto anti-bot bypass (stealth + simulation combined)"
+                },
+                "scan_full_page": {
+                    "type": "boolean",
+                    "description": "Scroll entire page to load lazy/infinite scroll content"
+                },
+                "process_iframes": {
+                    "type": "boolean",
+                    "description": "Extract content from iframes"
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID for browser reuse (faster repeated scrapes)"
                 },
                 "file_url": {
                     "type": "string",

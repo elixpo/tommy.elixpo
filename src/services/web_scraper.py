@@ -62,12 +62,21 @@ async def scrape_url(
     include_links: bool = False,
     include_images: bool = False,
     include_raw_html: bool = False,
+    include_tables: bool = False,  # Extract tables separately
     output_format: str = "markdown",  # "markdown", "fit_markdown", "html"
     # Browser/crawl options
     js_code: Optional[str] = None,  # JavaScript to execute
     wait_for: Optional[str] = None,  # CSS selector to wait for
     screenshot: bool = False,
     pdf: bool = False,
+    # Anti-bot / stealth options
+    stealth_mode: bool = False,  # Enable stealth mode
+    simulate_user: bool = False,  # Simulate human behavior
+    magic_mode: bool = False,  # Auto anti-bot bypass
+    # Page scanning options
+    scan_full_page: bool = False,  # Scroll entire page
+    process_iframes: bool = False,  # Extract iframe content
+    remove_overlays: bool = True,  # Remove popups/modals
     # Performance options
     timeout: int = 30,
     use_cache: bool = True,
@@ -96,6 +105,7 @@ async def scrape_url(
         include_links: Include extracted links
         include_images: Include image URLs
         include_raw_html: Include raw HTML in response
+        include_tables: Extract tables as structured data
         output_format: "markdown" (default), "fit_markdown" (filtered), "html"
 
         # Browser control:
@@ -103,6 +113,16 @@ async def scrape_url(
         wait_for: CSS selector to wait for before extraction
         screenshot: Capture screenshot
         pdf: Generate PDF
+
+        # Anti-bot / Stealth:
+        stealth_mode: Enable stealth mode to avoid detection
+        simulate_user: Simulate human behavior (mouse movements, delays)
+        magic_mode: Auto anti-bot bypass (combines stealth + simulation)
+
+        # Page scanning:
+        scan_full_page: Scroll entire page to load lazy content
+        process_iframes: Extract content from iframes
+        remove_overlays: Remove popups, modals, overlays
 
         # Performance:
         timeout: Request timeout in seconds
@@ -161,14 +181,16 @@ async def scrape_url(
         # Configure browser
         browser_config = BrowserConfig(
             headless=headless,
-            verbose=False
+            verbose=False,
+            # Stealth options
+            enable_stealth=stealth_mode or magic_mode
         )
 
         # Configure crawl
         crawl_config = CrawlerRunConfig(
             word_count_threshold=10,
             excluded_tags=["nav", "footer", "aside", "script", "style", "noscript"],
-            remove_overlay_elements=True,
+            remove_overlay_elements=remove_overlays,
             cache_mode=CacheMode.ENABLED if use_cache else CacheMode.DISABLED,
             # Extraction
             extraction_strategy=ext_strategy,
@@ -181,7 +203,14 @@ async def scrape_url(
             screenshot=screenshot,
             pdf=pdf,
             # Session
-            session_id=session_id
+            session_id=session_id,
+            # Anti-bot / Stealth
+            simulate_user=simulate_user or magic_mode,
+            override_navigator=stealth_mode or magic_mode,
+            magic=magic_mode,
+            # Page scanning
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes
         )
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -237,6 +266,12 @@ async def scrape_url(
             if include_images and result.media:
                 images = result.media.get("images", [])
                 response["images"] = [img.get("src") for img in images[:20] if img.get("src")]
+
+            # Include tables if requested
+            if include_tables and hasattr(result, 'media') and result.media:
+                tables = result.media.get("tables", [])
+                if tables:
+                    response["tables"] = tables[:10]  # Limit to 10 tables
 
             # Screenshot
             if screenshot and result.screenshot:
@@ -672,11 +707,21 @@ async def web_scrape_handler(
     # Output options
     include_links: bool = False,
     include_images: bool = False,
+    include_tables: bool = False,
     output_format: str = "markdown",
     # Browser options
     js_code: Optional[str] = None,
     wait_for: Optional[str] = None,
     screenshot: bool = False,
+    # Anti-bot / stealth options
+    stealth_mode: bool = False,
+    simulate_user: bool = False,
+    magic_mode: bool = False,
+    # Page scanning options
+    scan_full_page: bool = False,
+    process_iframes: bool = False,
+    # Session
+    session_id: Optional[str] = None,
     # File parsing
     file_url: Optional[str] = None,
     file_content: Optional[str] = None,
@@ -709,10 +754,17 @@ async def web_scrape_handler(
         filter_query: Query for content filtering
         include_links: Include page links
         include_images: Include image URLs
+        include_tables: Extract tables as structured data
         output_format: "markdown", "fit_markdown", "html"
         js_code: JavaScript to run before extraction
         wait_for: CSS selector to wait for
         screenshot: Capture screenshot
+        stealth_mode: Enable stealth to avoid bot detection
+        simulate_user: Simulate human behavior
+        magic_mode: Auto anti-bot bypass (stealth + simulation)
+        scan_full_page: Scroll to load lazy content
+        process_iframes: Extract iframe content
+        session_id: Reuse browser session
         file_url: Discord attachment URL to fetch
         file_content: Raw file content to parse
         file_type: File type hint
@@ -756,10 +808,17 @@ async def web_scrape_handler(
             filter_query=filter_query,
             include_links=include_links,
             include_images=include_images,
+            include_tables=include_tables,
             output_format=output_format,
             js_code=js_code,
             wait_for=wait_for,
-            screenshot=screenshot
+            screenshot=screenshot,
+            stealth_mode=stealth_mode,
+            simulate_user=simulate_user,
+            magic_mode=magic_mode,
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes,
+            session_id=session_id
         )
 
     elif action == "extract":
@@ -775,7 +834,14 @@ async def web_scrape_handler(
             content_filter=content_filter,
             filter_query=filter_query,
             include_links=include_links,
-            include_images=include_images
+            include_images=include_images,
+            include_tables=include_tables,
+            stealth_mode=stealth_mode,
+            simulate_user=simulate_user,
+            magic_mode=magic_mode,
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes,
+            session_id=session_id
         )
 
     elif action == "css_extract":
@@ -788,7 +854,13 @@ async def web_scrape_handler(
             extraction_strategy="css",
             schema=schema,
             include_links=include_links,
-            include_images=include_images
+            include_images=include_images,
+            include_tables=include_tables,
+            stealth_mode=stealth_mode,
+            magic_mode=magic_mode,
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes,
+            session_id=session_id
         )
 
     elif action == "semantic":
@@ -799,7 +871,12 @@ async def web_scrape_handler(
             extraction_strategy="cosine",
             semantic_filter=semantic_filter or filter_query,
             content_filter=content_filter,
-            filter_query=filter_query
+            filter_query=filter_query,
+            stealth_mode=stealth_mode,
+            magic_mode=magic_mode,
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes,
+            session_id=session_id
         )
 
     elif action == "regex":
@@ -808,7 +885,12 @@ async def web_scrape_handler(
         return await scrape_url(
             url=url,
             extraction_strategy="regex",
-            regex_patterns=patterns or ["email", "url", "phone"]
+            regex_patterns=patterns or ["email", "url", "phone"],
+            stealth_mode=stealth_mode,
+            magic_mode=magic_mode,
+            scan_full_page=scan_full_page,
+            process_iframes=process_iframes,
+            session_id=session_id
         )
 
     elif action == "multi":
