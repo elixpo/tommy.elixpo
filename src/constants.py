@@ -615,26 +615,33 @@ WEB_SCRAPE_TOOL = {
     "type": "function",
     "function": {
         "name": "web_scrape",
-        "description": """Scrape ANY website for clean, AI-ready content.
+        "description": """Full-powered web scraping with Crawl4AI. Multiple extraction strategies.
 
 Actions:
-- scrape: Fetch a URL → clean markdown (articles, docs, pages)
-- extract: Fetch + LLM-extract specific data (prices, emails, names)
-- multi: Scrape multiple URLs concurrently (max 10)
+- scrape: URL → clean markdown
+- extract: URL + LLM extraction (smart, flexible)
+- css_extract: URL + CSS schema (FAST, structured - use for known page structures!)
+- semantic: URL + cosine clustering (finds related content blocks)
+- regex: URL + pattern extraction (emails, URLs, phones, dates)
+- multi: Multiple URLs concurrently (max 10)
+- fetch_file: Fetch + parse Discord attachment (code, json, logs)
+- parse_file: Parse raw file content directly
 
-Use for: Reading docs, extracting data, research, any URL content.
-NOT for: Live search (use web_search), GitHub (use github_* tools).""",
+Strategy tips:
+- css_extract: 10-100x faster than LLM, use when you know the page structure
+- semantic: Great for messy pages, finds similar content clusters
+- regex: Extract emails, URLs, phones, IPs, dates, currencies without LLM""",
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["scrape", "extract", "multi"],
-                    "description": "scrape=single URL, extract=URL+smart extraction, multi=concurrent URLs"
+                    "enum": ["scrape", "extract", "css_extract", "semantic", "regex", "multi", "fetch_file", "parse_file"],
+                    "description": "Action to perform"
                 },
                 "url": {
                     "type": "string",
-                    "description": "URL to scrape (for scrape/extract actions)"
+                    "description": "URL to scrape (for URL-based actions)"
                 },
                 "urls": {
                     "type": "array",
@@ -643,15 +650,67 @@ NOT for: Live search (use web_search), GitHub (use github_* tools).""",
                 },
                 "extract": {
                     "type": "string",
-                    "description": "What to extract - natural language (e.g., 'Extract all product prices and names')"
+                    "description": "LLM extraction instruction (e.g., 'Extract product prices and descriptions')"
+                },
+                "schema": {
+                    "type": "object",
+                    "description": "CSS extraction schema: {baseSelector: 'div.item', fields: [{name: 'title', selector: 'h2', type: 'text'}]}"
+                },
+                "semantic_filter": {
+                    "type": "string",
+                    "description": "Keywords for semantic/cosine filtering (e.g., 'pricing features')"
+                },
+                "patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Regex patterns: email, url, phone, date, ip, currency, hashtag, twitter, all"
+                },
+                "content_filter": {
+                    "type": "string",
+                    "enum": ["bm25", "pruning"],
+                    "description": "Pre-filter content before extraction (bm25=keyword relevance, pruning=remove boilerplate)"
+                },
+                "filter_query": {
+                    "type": "string",
+                    "description": "Query for content filtering"
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["markdown", "fit_markdown", "html"],
+                    "description": "Output format (fit_markdown=filtered/cleaner)"
+                },
+                "js_code": {
+                    "type": "string",
+                    "description": "JavaScript to execute before extraction (e.g., click buttons, scroll)"
+                },
+                "wait_for": {
+                    "type": "string",
+                    "description": "CSS selector to wait for before extraction"
                 },
                 "include_links": {
                     "type": "boolean",
-                    "description": "Include page links in result (default false)"
+                    "description": "Include page links in result"
                 },
                 "include_images": {
                     "type": "boolean",
-                    "description": "Include image URLs in result (default false)"
+                    "description": "Include image URLs in result"
+                },
+                "screenshot": {
+                    "type": "boolean",
+                    "description": "Capture screenshot of page"
+                },
+                "file_url": {
+                    "type": "string",
+                    "description": "Discord attachment URL (for fetch_file action)"
+                },
+                "file_content": {
+                    "type": "string",
+                    "description": "Raw file content (for parse_file action)"
+                },
+                "file_type": {
+                    "type": "string",
+                    "enum": ["text", "code", "json", "yaml", "log"],
+                    "description": "File type hint for parsing"
                 }
             },
             "required": ["action"]
@@ -1046,8 +1105,9 @@ If anyone asks what you are, your AI, your brain, etc - you're powered by a Mixt
 
 {repo_info}
 
-## Vision Capabilities
-You can see and analyze images, PDFs, videos, screenshots - any attachment. NEVER say you can't see files.
+## Vision & File Capabilities
+**Can process:** Images, PDFs, videos (YouTube, etc.), screenshots - native vision.
+**Text files:** Use `web_scrape(action="fetch_file", file_url="...")` to fetch and parse Discord attachments (.py, .js, .json, .yaml, .log, .txt, etc.). The bot will auto-detect file type and parse accordingly.
 
 ## YOUR TRAINING DATA IS GARBAGE FOR ANYTHING CURRENT
 
@@ -1283,7 +1343,7 @@ ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, mil
 - `polly_agent` - **Code agent** (implement, edit code, create branches, PRs)
 - `github_custom` - Raw data (commits, history, stats)
 - `web_search` - Web search (mode="fast"|"reasoning")
-- `web_scrape` - Scrape ANY URL for content/data (action="scrape"|"extract"|"multi")
+- `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
@@ -1294,7 +1354,7 @@ NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels,
 - `github_project` - Projects V2: list, view (read-only)
 - `github_custom` - Raw data (commits, history, stats)
 - `web_search` - Web search (mode="fast"|"reasoning")
-- `web_scrape` - Scrape ANY URL for content/data (action="scrape"|"extract"|"multi")
+- `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
