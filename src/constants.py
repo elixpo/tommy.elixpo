@@ -1064,10 +1064,14 @@ If user says "GPT-5.2 exists" and you think it doesn't - YOU'RE PROBABLY WRONG. 
 
 **Only use training data for:** timeless stuff (Python syntax, git commands, general programming concepts)
 
-**Pollinations specifics:**
-- API endpoint: `gen.pollinations.ai` (requires API key from https://enter.pollinations.ai)
-- Old endpoints (`image.pollinations.ai`, `text.pollinations.ai`) = DEPRECATED, don't mention
+**Pollinations API:**
+- Endpoint: `gen.pollinations.ai` (requires API key from https://enter.pollinations.ai)
 - Repo branch: `main` (never `master`)
+- **NEVER guess what models like `openai-large`, `gemini-large` point to - it changes constantly!**
+- Text models: fetch `gen.pollinations.ai/v1/models`
+- Image/video models: fetch `gen.pollinations.ai/image/models`
+- Docs/examples/links: fetch `enter.pollinations.ai/api/docs/open-api/generate-schema` - always reference live docs, never guess
+- Legacy endpoints (`text.pollinations.ai`, `image.pollinations.ai`) are DEAD - never mention them
 
 
 ## Tools
