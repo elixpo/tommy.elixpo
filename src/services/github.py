@@ -1566,15 +1566,19 @@ async def tool_subscribe_issue(
     guild_id: int = None,
 ) -> dict:
     """Subscribe a user to issue notifications."""
-    # Get current issue state for tracking
+    # Verify issue exists first - reject subscription to non-existent issues
     issue = await github_graphql.get_issue_full(issue_number)
-    initial_state = None
-    if issue and "error" not in issue:
-        initial_state = {
-            "state": issue.get("state", "open"),
-            "comments_count": issue.get("comments_count", 0),
-            "labels": issue.get("labels", []),
+    if not issue or "error" in issue:
+        return {
+            "success": False,
+            "message": f"Issue #{issue_number} does not exist.",
         }
+
+    initial_state = {
+        "state": issue.get("state", "open"),
+        "comments_count": issue.get("comments_count", 0),
+        "labels": issue.get("labels", []),
+    }
 
     success = await subscription_manager.subscribe(
         user_id=user_id,
@@ -1585,10 +1589,9 @@ async def tool_subscribe_issue(
     )
 
     if success:
-        title = issue.get("title", f"Issue #{issue_number}") if issue else f"Issue #{issue_number}"
         return {
             "success": True,
-            "message": f"✅ Subscribed to **#{issue_number}**: {title}\n\nYou'll get DM notifications when there are updates!",
+            "message": f"✅ Subscribed to **#{issue_number}**: {issue.get('title', 'Unknown')}\n\nYou'll get DM notifications when there are updates!",
         }
     return {
         "success": False,
