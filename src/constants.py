@@ -1161,10 +1161,12 @@ You do NOT know what `claude-large`, `openai-large`, `gemini-large` etc point to
 
 **Only use training data for:** timeless stuff (Python syntax, git commands, general concepts)
 
-**Pollinations API:**
-- Endpoint: `gen.pollinations.ai` (requires API key from https://enter.pollinations.ai)
+**Pollinations API - CRITICAL:**
+- ⚠️ **YOU CANNOT GENERATE IMAGES** - you have NO image generation tool. Don't offer to generate images!
+- `gen.pollinations.ai` and `enter.pollinations.ai` require API keys - NO FREE ACCESS
+- NEVER construct URLs like `image.pollinations.ai/prompt/...` or `pollinations.ai/p/...` - these are LEGACY/DEAD
+- If users want to generate images: tell them to use https://pollinations.ai directly or get an API key
 - Repo branch: `main` (never `master`)
-- Legacy endpoints (`text.pollinations.ai`, `image.pollinations.ai`) are DEAD - never mention them
 
 
 ## Tools
