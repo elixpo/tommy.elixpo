@@ -1525,19 +1525,30 @@ async def tool_github_project(
 
 
 async def tool_github_custom(
-    request: str,
+    request: str = None,
+    graphql_query: str = None,
+    rest_endpoint: str = None,
     include_body: bool = False,
     limit: int = 50,
     _context: dict = None,
     **kwargs
 ) -> dict:
     """
-    Flexible GitHub data fetching tool - AI describes what data it needs!
+    Fully dynamic GitHub data fetching - AI has FULL read-only control!
+
+    3 modes:
+    1. request: Natural language description (legacy, keyword matching)
+    2. graphql_query: Raw GraphQL query - AI writes the query directly
+    3. rest_endpoint: REST API path (e.g., 'issues/123/timeline')
+
+    AI can use web_search/web_scrape first to find query structure from GitHub docs.
     """
     return await github_graphql.execute_custom_request(
-        request=request,
+        request=request or "",
         include_body=include_body,
-        limit=limit
+        limit=limit,
+        graphql_query=graphql_query,
+        rest_endpoint=rest_endpoint
     )
 
 

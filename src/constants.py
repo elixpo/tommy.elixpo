@@ -346,26 +346,43 @@ Actions:
         "type": "function",
         "function": {
             "name": "github_custom",
-            "description": """Fetch raw GitHub data for custom analysis.
-Use for: commit history, contributor stats, activity metrics, stale issue detection, spam detection.
-NOT for: creating/editing issues (use github_issue), PRs (use github_pr), code changes (use polly_agent).""",
+            "description": """FULLY DYNAMIC GitHub data fetching - 100% AI control (read-only).
+
+3 modes:
+1. request: Natural language (legacy) - "get commit history"
+2. graphql_query: Raw GraphQL - YOU write the query! Full control.
+3. rest_endpoint: REST API path - e.g., "issues/123/timeline", "commits"
+
+TIP: Use web_search/web_scrape on GitHub docs FIRST to find exact query structure!
+Examples: "site:docs.github.com graphql userContentEdits" or fetch the GraphQL explorer.
+
+Use for: edit history, timeline events, contributor stats, ANY read-only GitHub data.
+NOT for: writes (use github_issue/github_pr for mutations).""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "request": {
                         "type": "string",
-                        "description": "What data you need in plain English"
+                        "description": "Natural language request (legacy mode)"
+                    },
+                    "graphql_query": {
+                        "type": "string",
+                        "description": "Raw GraphQL query - AI writes it! Use , ,  vars."
+                    },
+                    "rest_endpoint": {
+                        "type": "string",
+                        "description": "REST API path (e.g., 'issues/123/timeline', 'commits')"
                     },
                     "include_body": {
                         "type": "boolean",
-                        "description": "Include full body text? (for spam detection, etc.)"
+                        "description": "Include full body text? (for request mode)"
                     },
                     "limit": {
                         "type": "integer",
                         "description": "Max items (default 50, max 100)"
                     }
                 },
-                "required": ["request"]
+                "required": []
             }
         }
     },

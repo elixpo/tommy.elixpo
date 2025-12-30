@@ -1444,14 +1444,63 @@ class GitHubGraphQL:
         self,
         request: str,
         include_body: bool = False,
-        limit: int = 50
+        limit: int = 50,
+        graphql_query: str = None,
+        rest_endpoint: str = None
     ) -> dict:
         """
-        Execute flexible requests based on natural language description.
+        Execute flexible requests - supports 3 modes:
 
-        The AI describes what data it needs, and we fetch it.
-        The AI then analyzes the raw data to answer the user's question.
+        1. Natural language (legacy): AI describes what it needs, we keyword-match
+        2. Raw GraphQL: AI provides graphql_query directly - FULL CONTROL
+        3. REST API: AI provides rest_endpoint (e.g., '/issues/123/timeline')
+
+        All modes are READ-ONLY for security.
         """
+        # Mode 1: Raw GraphQL query - AI has full control
+        if graphql_query:
+            # Security: block mutations
+            query_lower = graphql_query.lower()
+            if any(word in query_lower for word in ['mutation', 'delete', 'update', 'create', 'add', 'remove', 'set']):
+                return {"error": "Mutations not allowed via github_custom. Use specific tools for write operations."}
+
+            result = await self._execute(graphql_query, {
+                "owner": self.owner,
+                "repo": self.repo,
+                "limit": min(limit, 100)
+            })
+            return {
+                "mode": "graphql",
+                "query": graphql_query[:200] + "..." if len(graphql_query) > 200 else graphql_query,
+                "data": result.get("data", result)
+            }
+
+        # Mode 2: REST API endpoint
+        if rest_endpoint:
+            # Security: only allow GET requests to specific paths
+            endpoint = rest_endpoint.strip('/')
+            allowed_prefixes = ['issues', 'pulls', 'commits', 'releases', 'branches', 'tags', 'contributors', 'stats', 'contents', 'labels', 'milestones']
+            if not any(endpoint.startswith(p) for p in allowed_prefixes):
+                return {"error": f"REST endpoint must start with one of: {allowed_prefixes}"}
+
+            url = f"https://api.github.com/repos/{self.owner}/{self.repo}/{endpoint}"
+            try:
+                headers = await self._get_headers()
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            return {
+                                "mode": "rest",
+                                "endpoint": endpoint,
+                                "data": data
+                            }
+                        else:
+                            return {"error": f"REST API returned {resp.status}"}
+            except Exception as e:
+                return {"error": str(e)}
+
+        # Mode 3: Legacy natural language (keyword matching)
         request_lower = request.lower()
         limit = min(limit, 100)  # Cap at 100
 
