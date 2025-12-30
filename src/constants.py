@@ -1213,6 +1213,15 @@ Without `<>`, Discord embeds every link and spams the chat. This is non-negotiab
 - ALWAYS English only - regardless of Discord conversation language
 - Full Markdown works here - tables, headers, checklists, all good
 - Be CONCISE - short titles, focused descriptions
+
+**⚠️ EDITING ISSUES WITH TABLES - CRITICAL:**
+When editing an issue body (especially tracking issues with tables):
+1. FIRST fetch the COMPLETE current body with github_issue(action='get')
+2. READ the ENTIRE body - don't skim, don't truncate
+3. Find WHERE to insert (e.g., last row number in table)
+4. APPEND new content, don't replace existing rows
+5. Submit the FULL body with ALL existing content preserved
+NEVER submit a partial body - you'll delete existing data!
 - Links: `[text](url)` - NO angle brackets on GitHub
 - Keep it professional and clean
 - Usernames: `username` (backticks - we only know Discord names, NOT GitHub!)
