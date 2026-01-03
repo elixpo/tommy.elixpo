@@ -186,94 +186,101 @@ Actions:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action to perform (get, search, create, close, comment, etc.)"
+                        "description": "The action to perform (get, search, create, close, comment, etc.)",
                     },
                     "issue_number": {
                         "type": "integer",
-                        "description": "Issue number (for get, close, comment, edit, label, assign, etc.)"
+                        "description": "Issue number (for get, close, comment, edit, label, assign, etc.)",
                     },
                     "keywords": {
                         "type": "string",
-                        "description": "Search terms (for search, find_similar)"
+                        "description": "Search terms (for search, find_similar)",
                     },
                     "state": {
                         "type": "string",
                         "enum": ["open", "closed", "all"],
-                        "description": "Filter state (for search actions)"
+                        "description": "Filter state (for search actions)",
                     },
                     "title": {
                         "type": "string",
-                        "description": "Issue title (for create, edit)"
+                        "description": "Issue title (for create, edit)",
                     },
                     "description": {
                         "type": "string",
-                        "description": "Issue body/description (for create)"
+                        "description": "Issue body/description (for create)",
                     },
                     "body": {
                         "type": "string",
-                        "description": "New body text (for edit)"
+                        "description": "New body text (for edit)",
                     },
                     "comment": {
                         "type": "string",
-                        "description": "Comment text (for comment, close, reopen)"
+                        "description": "Comment text (for comment, close, reopen)",
                     },
                     "reason": {
                         "type": "string",
                         "enum": ["completed", "not_planned", "duplicate"],
-                        "description": "Close reason (for close)"
+                        "description": "Close reason (for close)",
                     },
                     "labels": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Labels (for label, unlabel, search)"
+                        "description": "Labels (for label, unlabel, search)",
                     },
                     "assignees": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "GitHub usernames (for assign, unassign)"
+                        "description": "GitHub usernames (for assign, unassign)",
                     },
                     "milestone": {
                         "type": "string",
-                        "description": "Milestone name or 'none' (for milestone)"
+                        "description": "Milestone name or 'none' (for milestone)",
                     },
                     "lock": {
                         "type": "boolean",
-                        "description": "True to lock, false to unlock (for lock)"
+                        "description": "True to lock, false to unlock (for lock)",
                     },
                     "related_issues": {
                         "type": "array",
                         "items": {"type": "integer"},
-                        "description": "Related issue numbers (for link)"
+                        "description": "Related issue numbers (for link)",
                     },
                     "relationship": {
                         "type": "string",
-                        "enum": ["duplicate", "related", "blocks", "blocked_by", "parent", "child"],
-                        "description": "Relationship type (for link)"
+                        "enum": [
+                            "duplicate",
+                            "related",
+                            "blocks",
+                            "blocked_by",
+                            "parent",
+                            "child",
+                        ],
+                        "description": "Relationship type (for link)",
                     },
                     "discord_username": {
                         "type": "string",
-                        "description": "Discord username (for search_user)"
+                        "description": "Discord username (for search_user)",
                     },
                     "include_comments": {
                         "type": "boolean",
-                        "description": "Include comments (for get)"
+                        "description": "Include comments (for get)",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max results (for search, find_similar)"
+                        "description": "Max results (for search, find_similar)",
                     },
                     "child_issue_number": {
                         "type": "integer",
-                        "description": "Child/sub-issue number (for add_sub_issue, remove_sub_issue)"
+                        "description": "Child/sub-issue number (for add_sub_issue, remove_sub_issue)",
                     },
                     "comment_id": {
                         "type": "integer",
-                        "description": "Comment ID (for edit_comment, delete_comment) - get from issue comments"
-                    }
+                        "description": "Comment ID (for edit_comment, delete_comment) - get from issue comments",
+                    },
                 },
-                "required": ["action"]
-            }
-        }
+                "required": ["action"],
+            },
+        },
     },
     {
         "type": "function",
@@ -295,32 +302,32 @@ Actions:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action: list, view, list_items, get_item, add, remove, set_status, set_field"
+                        "description": "The action: list, view, list_items, get_item, add, remove, set_status, set_field",
                     },
                     "project_number": {
                         "type": "integer",
-                        "description": "Project number from URL (e.g., 20 from projects/20). NOT required for action='list'"
+                        "description": "Project number from URL (e.g., 20 from projects/20). NOT required for action='list'",
                     },
                     "issue_number": {
                         "type": "integer",
-                        "description": "Issue number to add/update"
+                        "description": "Issue number to add/update",
                     },
                     "status": {
                         "type": "string",
-                        "description": "Status/column name (e.g., 'Todo', 'In Progress', 'Done')"
+                        "description": "Status/column name (e.g., 'Todo', 'In Progress', 'Done')",
                     },
                     "field_name": {
                         "type": "string",
-                        "description": "Custom field name (for set_field)"
+                        "description": "Custom field name (for set_field)",
                     },
                     "field_value": {
                         "type": "string",
-                        "description": "Field value to set (for set_field)"
-                    }
+                        "description": "Field value to set (for set_field)",
+                    },
                 },
-                "required": ["action"]
-            }
-        }
+                "required": ["action"],
+            },
+        },
     },
     {
         "type": "function",
@@ -332,16 +339,16 @@ Actions:
                 "properties": {
                     "issues_limit": {
                         "type": "integer",
-                        "description": "Number of recent issues to include (default 10, max 50)"
+                        "description": "Number of recent issues to include (default 10, max 50)",
                     },
                     "include_projects": {
                         "type": "boolean",
-                        "description": "Include projects list (default true)"
-                    }
+                        "description": "Include projects list (default true)",
+                    },
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -355,20 +362,20 @@ NOT for: creating/editing issues (use github_issue), PRs (use github_pr), code c
                 "properties": {
                     "request": {
                         "type": "string",
-                        "description": "What data you need in plain English"
+                        "description": "What data you need in plain English",
                     },
                     "include_body": {
                         "type": "boolean",
-                        "description": "Include full body text? (for spam detection, etc.)"
+                        "description": "Include full body text? (for spam detection, etc.)",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max items (default 50, max 100)"
-                    }
+                        "description": "Max items (default 50, max 100)",
+                    },
                 },
-                "required": ["request"]
-            }
-        }
+                "required": ["request"],
+            },
+        },
     },
     {
         "type": "function",
@@ -403,105 +410,105 @@ Actions:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "The action: get, list, get_files, get_diff, get_checks, get_commits, get_threads, get_review_comments, get_file_at_ref, request_review, remove_reviewer, approve, request_changes, merge, update, close, reopen, create, convert_to_draft, ready_for_review, update_branch, comment, inline_comment, suggest, resolve_thread, unresolve_thread, enable_auto_merge, disable_auto_merge, review"
+                        "description": "The action: get, list, get_files, get_diff, get_checks, get_commits, get_threads, get_review_comments, get_file_at_ref, request_review, remove_reviewer, approve, request_changes, merge, update, close, reopen, create, convert_to_draft, ready_for_review, update_branch, comment, inline_comment, suggest, resolve_thread, unresolve_thread, enable_auto_merge, disable_auto_merge, review",
                     },
                     "pr_number": {
                         "type": "integer",
-                        "description": "PR number (for most actions)"
+                        "description": "PR number (for most actions)",
                     },
                     "state": {
                         "type": "string",
                         "enum": ["open", "closed", "merged", "all"],
-                        "description": "Filter state (for list)"
+                        "description": "Filter state (for list)",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max results (for list, default 10)"
+                        "description": "Max results (for list, default 10)",
                     },
                     "base": {
                         "type": "string",
-                        "description": "Base branch filter (for list, create)"
+                        "description": "Base branch filter (for list, create)",
                     },
                     "title": {
                         "type": "string",
-                        "description": "PR title (for create, update)"
+                        "description": "PR title (for create, update)",
                     },
                     "body": {
                         "type": "string",
-                        "description": "PR body or review comment (for create, update, approve, request_changes)"
+                        "description": "PR body or review comment (for create, update, approve, request_changes)",
                     },
                     "head": {
                         "type": "string",
-                        "description": "Head branch name (for create)"
+                        "description": "Head branch name (for create)",
                     },
                     "draft": {
                         "type": "boolean",
-                        "description": "Create as draft (for create)"
+                        "description": "Create as draft (for create)",
                     },
                     "reviewers": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "GitHub usernames (for request_review, remove_reviewer)"
+                        "description": "GitHub usernames (for request_review, remove_reviewer)",
                     },
                     "team_reviewers": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Team slugs (for request_review, remove_reviewer)"
+                        "description": "Team slugs (for request_review, remove_reviewer)",
                     },
                     "merge_method": {
                         "type": "string",
                         "enum": ["merge", "squash", "rebase"],
-                        "description": "Merge method (for merge, enable_auto_merge)"
+                        "description": "Merge method (for merge, enable_auto_merge)",
                     },
                     "commit_title": {
                         "type": "string",
-                        "description": "Custom merge commit title (for merge)"
+                        "description": "Custom merge commit title (for merge)",
                     },
                     "commit_message": {
                         "type": "string",
-                        "description": "Custom merge commit message (for merge)"
+                        "description": "Custom merge commit message (for merge)",
                     },
                     "comment": {
                         "type": "string",
-                        "description": "Comment text (for comment, inline_comment, suggest)"
+                        "description": "Comment text (for comment, inline_comment, suggest)",
                     },
                     "post_review_to_github": {
                         "type": "boolean",
-                        "description": "Post AI review as GitHub comment? (for review action, default false)"
+                        "description": "Post AI review as GitHub comment? (for review action, default false)",
                     },
                     "path": {
                         "type": "string",
-                        "description": "File path for inline comment/suggestion (e.g., 'src/main.py')"
+                        "description": "File path for inline comment/suggestion (e.g., 'src/main.py')",
                     },
                     "line": {
                         "type": "integer",
-                        "description": "Line number for inline comment/suggestion"
+                        "description": "Line number for inline comment/suggestion",
                     },
                     "side": {
                         "type": "string",
                         "enum": ["LEFT", "RIGHT"],
-                        "description": "Diff side: LEFT=deletions, RIGHT=additions (default RIGHT)"
+                        "description": "Diff side: LEFT=deletions, RIGHT=additions (default RIGHT)",
                     },
                     "suggestion": {
                         "type": "string",
-                        "description": "Suggested code replacement (for suggest action)"
+                        "description": "Suggested code replacement (for suggest action)",
                     },
                     "thread_id": {
                         "type": "string",
-                        "description": "Review thread ID (for resolve_thread, unresolve_thread)"
+                        "description": "Review thread ID (for resolve_thread, unresolve_thread)",
                     },
                     "file_path": {
                         "type": "string",
-                        "description": "File path for get_file_at_ref (e.g., '.github/workflows/ci.yml', 'src/main.py')"
+                        "description": "File path for get_file_at_ref (e.g., '.github/workflows/ci.yml', 'src/main.py')",
                     },
                     "ref": {
                         "type": "string",
-                        "description": "Git ref (branch name, tag, or commit SHA) for get_file_at_ref"
-                    }
+                        "description": "Git ref (branch name, tag, or commit SHA) for get_file_at_ref",
+                    },
                 },
-                "required": ["action"]
-            }
-        }
+                "required": ["action"],
+            },
+        },
     },
     {
         "type": "function",
@@ -522,34 +529,41 @@ When in doubt: DON'T use polly_agent. Use code_search instead.""",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["task", "status", "list_tasks", "ask_user", "push", "open_pr"],
-                        "description": "Action: task (do coding work), push (push to GitHub), open_pr (create PR), status/list_tasks (check progress), ask_user (get user input)"
+                        "enum": [
+                            "task",
+                            "status",
+                            "list_tasks",
+                            "ask_user",
+                            "push",
+                            "open_pr",
+                        ],
+                        "description": "Action: task (do coding work), push (push to GitHub), open_pr (create PR), status/list_tasks (check progress), ask_user (get user input)",
                     },
                     "task": {
                         "type": "string",
-                        "description": "REQUIRED for action='task'. Describe the CODE EDIT to make - what to fix, implement, or modify. Be specific!"
+                        "description": "REQUIRED for action='task'. Describe the CODE EDIT to make - what to fix, implement, or modify. Be specific!",
                     },
                     "question": {
                         "type": "string",
-                        "description": "Question for ask_user action"
+                        "description": "Question for ask_user action",
                     },
                     "pr_title": {
                         "type": "string",
-                        "description": "PR title (for open_pr)"
+                        "description": "PR title (for open_pr)",
                     },
                     "pr_body": {
                         "type": "string",
-                        "description": "PR description (for open_pr)"
+                        "description": "PR description (for open_pr)",
                     },
                     "repo": {
                         "type": "string",
-                        "description": "Repository (default: pollinations/pollinations)"
-                    }
+                        "description": "Repository (default: pollinations/pollinations)",
+                    },
                 },
-                "required": ["action"]
-            }
-        }
-    }
+                "required": ["action"],
+            },
+        },
+    },
 ]
 
 # =============================================================================
@@ -569,16 +583,16 @@ Returns: Code snippets with file paths.""",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Natural language query describing what code you're looking for"
+                    "description": "Natural language query describing what code you're looking for",
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Number of results to return (default: 5, max: 10)"
-                }
+                    "description": "Number of results to return (default: 5, max: 10)",
+                },
             },
-            "required": ["query"]
-        }
-    }
+            "required": ["query"],
+        },
+    },
 }
 
 # =============================================================================
@@ -597,17 +611,17 @@ mode="reasoning": Multi-step analysis with citations (slower, thorough research)
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search query - be specific for better results"
+                    "description": "The search query - be specific for better results",
                 },
                 "mode": {
                     "type": "string",
                     "enum": ["fast", "reasoning"],
-                    "description": "fast=quick lookups (default), reasoning=complex analysis"
-                }
+                    "description": "fast=quick lookups (default), reasoning=complex analysis",
+                },
             },
-            "required": ["query"]
-        }
-    }
+            "required": ["query"],
+        },
+    },
 }
 
 # =============================================================================
@@ -643,114 +657,123 @@ Page scanning:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["scrape", "extract", "css_extract", "semantic", "regex", "multi", "fetch_file", "parse_file"],
-                    "description": "Action to perform"
+                    "enum": [
+                        "scrape",
+                        "extract",
+                        "css_extract",
+                        "semantic",
+                        "regex",
+                        "multi",
+                        "fetch_file",
+                        "parse_file",
+                    ],
+                    "description": "Action to perform",
                 },
                 "url": {
                     "type": "string",
-                    "description": "URL to scrape (for URL-based actions)"
+                    "description": "URL to scrape (for URL-based actions)",
                 },
                 "urls": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of URLs (for multi action, max 10)"
+                    "description": "List of URLs (for multi action, max 10)",
                 },
                 "extract": {
                     "type": "string",
-                    "description": "LLM extraction instruction (e.g., 'Extract product prices and descriptions')"
+                    "description": "LLM extraction instruction (e.g., 'Extract product prices and descriptions')",
                 },
                 "schema": {
                     "type": "object",
-                    "description": "CSS extraction schema: {baseSelector: 'div.item', fields: [{name: 'title', selector: 'h2', type: 'text'}]}"
+                    "description": "CSS extraction schema: {baseSelector: 'div.item', fields: [{name: 'title', selector: 'h2', type: 'text'}]}",
                 },
                 "semantic_filter": {
                     "type": "string",
-                    "description": "Keywords for semantic/cosine filtering (e.g., 'pricing features')"
+                    "description": "Keywords for semantic/cosine filtering (e.g., 'pricing features')",
                 },
                 "patterns": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Regex patterns: email, url, phone, date, ip, currency, hashtag, twitter, all"
+                    "description": "Regex patterns: email, url, phone, date, ip, currency, hashtag, twitter, all",
                 },
                 "content_filter": {
                     "type": "string",
                     "enum": ["bm25", "pruning"],
-                    "description": "Pre-filter content (bm25=keyword relevance, pruning=remove boilerplate)"
+                    "description": "Pre-filter content (bm25=keyword relevance, pruning=remove boilerplate)",
                 },
                 "filter_query": {
                     "type": "string",
-                    "description": "Query for content filtering"
+                    "description": "Query for content filtering",
                 },
                 "output_format": {
                     "type": "string",
                     "enum": ["markdown", "fit_markdown", "html"],
-                    "description": "Output format (fit_markdown=filtered/cleaner)"
+                    "description": "Output format (fit_markdown=filtered/cleaner)",
                 },
                 "js_code": {
                     "type": "string",
-                    "description": "JavaScript to execute before extraction (e.g., click buttons, scroll)"
+                    "description": "JavaScript to execute before extraction (e.g., click buttons, scroll)",
                 },
                 "wait_for": {
                     "type": "string",
-                    "description": "CSS selector to wait for before extraction"
+                    "description": "CSS selector to wait for before extraction",
                 },
                 "include_links": {
                     "type": "boolean",
-                    "description": "Include page links in result"
+                    "description": "Include page links in result",
                 },
                 "include_images": {
                     "type": "boolean",
-                    "description": "Include image URLs in result"
+                    "description": "Include image URLs in result",
                 },
                 "include_tables": {
                     "type": "boolean",
-                    "description": "Extract tables as structured data"
+                    "description": "Extract tables as structured data",
                 },
                 "screenshot": {
                     "type": "boolean",
-                    "description": "Capture screenshot of page"
+                    "description": "Capture screenshot of page",
                 },
                 "stealth_mode": {
                     "type": "boolean",
-                    "description": "Enable stealth to avoid bot detection"
+                    "description": "Enable stealth to avoid bot detection",
                 },
                 "simulate_user": {
                     "type": "boolean",
-                    "description": "Simulate human behavior (delays, movements)"
+                    "description": "Simulate human behavior (delays, movements)",
                 },
                 "magic_mode": {
                     "type": "boolean",
-                    "description": "Auto anti-bot bypass (stealth + simulation combined)"
+                    "description": "Auto anti-bot bypass (stealth + simulation combined)",
                 },
                 "scan_full_page": {
                     "type": "boolean",
-                    "description": "Scroll entire page to load lazy/infinite scroll content"
+                    "description": "Scroll entire page to load lazy/infinite scroll content",
                 },
                 "process_iframes": {
                     "type": "boolean",
-                    "description": "Extract content from iframes"
+                    "description": "Extract content from iframes",
                 },
                 "session_id": {
                     "type": "string",
-                    "description": "Session ID for browser reuse (faster repeated scrapes)"
+                    "description": "Session ID for browser reuse (faster repeated scrapes)",
                 },
                 "file_url": {
                     "type": "string",
-                    "description": "Discord attachment URL (for fetch_file action)"
+                    "description": "Discord attachment URL (for fetch_file action)",
                 },
                 "file_content": {
                     "type": "string",
-                    "description": "Raw file content (for parse_file action)"
+                    "description": "Raw file content (for parse_file action)",
                 },
                 "file_type": {
                     "type": "string",
                     "enum": ["text", "code", "json", "yaml", "log"],
-                    "description": "File type hint for parsing"
-                }
+                    "description": "File type hint for parsing",
+                },
             },
-            "required": ["action"]
-        }
-    }
+            "required": ["action"],
+        },
+    },
 }
 
 
@@ -780,75 +803,89 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["messages", "members", "channels", "threads", "roles", "history", "context", "thread_history"],
-                    "description": "What to search or fetch"
+                    "enum": [
+                        "messages",
+                        "members",
+                        "channels",
+                        "threads",
+                        "roles",
+                        "history",
+                        "context",
+                        "thread_history",
+                    ],
+                    "description": "What to search or fetch",
                 },
                 "query": {
                     "type": "string",
-                    "description": "Search term (required for messages). Mentions like <@123>, <#456>, <@&789> are auto-parsed to extract IDs."
+                    "description": "Search term (required for messages). Mentions like <@123>, <#456>, <@&789> are auto-parsed to extract IDs.",
                 },
                 "channel_id": {
                     "type": "integer",
-                    "description": "Target channel for messages/history/context actions"
+                    "description": "Target channel for messages/history/context actions",
                 },
                 "channel_name": {
                     "type": "string",
-                    "description": "Find channel by name (alternative to channel_id)"
+                    "description": "Find channel by name (alternative to channel_id)",
                 },
                 "user_id": {
                     "type": "integer",
-                    "description": "Look up member by ID (action=members), or filter messages by author"
+                    "description": "Look up member by ID (action=members), or filter messages by author",
                 },
-                "role_id": {
-                    "type": "integer",
-                    "description": "Filter members by role"
-                },
+                "role_id": {"type": "integer", "description": "Filter members by role"},
                 "role_name": {
                     "type": "string",
-                    "description": "Find role by name (alternative to role_id)"
+                    "description": "Find role by name (alternative to role_id)",
                 },
                 "message_id": {
                     "type": "integer",
-                    "description": "Target message for context action"
+                    "description": "Target message for context action",
                 },
                 "thread_id": {
                     "type": "integer",
-                    "description": "Target thread for thread_history action"
+                    "description": "Target thread for thread_history action",
                 },
                 "channel_type": {
                     "type": "string",
                     "enum": ["text", "voice", "forum", "category", "news", "stage"],
-                    "description": "Filter channels by type"
+                    "description": "Filter channels by type",
                 },
                 "include_archived": {
                     "type": "boolean",
-                    "description": "Include archived threads (default true)"
+                    "description": "Include archived threads (default true)",
                 },
                 "include_members": {
                     "type": "boolean",
-                    "description": "Include member list for roles (default false)"
+                    "description": "Include member list for roles (default false)",
                 },
                 "has": {
                     "type": "string",
-                    "enum": ["link", "embed", "file", "video", "image", "sound", "sticker"],
-                    "description": "Filter messages by attachment type"
+                    "enum": [
+                        "link",
+                        "embed",
+                        "file",
+                        "video",
+                        "image",
+                        "sound",
+                        "sticker",
+                    ],
+                    "description": "Filter messages by attachment type",
                 },
                 "before": {
                     "type": "string",
-                    "description": "Messages before this date/ID (also for pagination in history/thread_history)"
+                    "description": "Messages before this date/ID (also for pagination in history/thread_history)",
                 },
                 "after": {
                     "type": "string",
-                    "description": "Messages after this date/ID"
+                    "description": "Messages after this date/ID",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max results (default 25, max 100 for history)"
-                }
+                    "description": "Max results (default 25, max 100 for history)",
+                },
             },
-            "required": ["action"]
-        }
-    }
+            "required": ["action"],
+        },
+    },
 }
 
 
@@ -875,18 +912,41 @@ def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> lis
 # Admin actions per tool - these lines will be removed from descriptions for non-admins
 ADMIN_ACTIONS = {
     "github_issue": {
-        "close", "reopen", "edit", "label", "unlabel", "assign", "unassign",
-        "milestone", "lock", "link", "create_sub_issue", "add_sub_issue", "remove_sub_issue"
+        "close",
+        "reopen",
+        "edit",
+        "label",
+        "unlabel",
+        "assign",
+        "unassign",
+        "milestone",
+        "lock",
+        "link",
+        "create_sub_issue",
+        "add_sub_issue",
+        "remove_sub_issue",
     },
     "github_pr": {
-        "request_review", "remove_reviewer", "approve", "request_changes", "merge",
-        "update", "create", "convert_to_draft", "ready_for_review", "update_branch",
-        "inline_comment", "suggest", "resolve_thread", "unresolve_thread",
-        "enable_auto_merge", "disable_auto_merge", "close", "reopen"
+        "request_review",
+        "remove_reviewer",
+        "approve",
+        "request_changes",
+        "merge",
+        "update",
+        "create",
+        "convert_to_draft",
+        "ready_for_review",
+        "update_branch",
+        "inline_comment",
+        "suggest",
+        "resolve_thread",
+        "unresolve_thread",
+        "enable_auto_merge",
+        "disable_auto_merge",
+        "close",
+        "reopen",
     },
-    "github_project": {
-        "add", "remove", "set_status", "set_field"
-    },
+    "github_project": {"add", "remove", "set_status", "set_field"},
     # polly_agent is entirely admin-only, handled separately
 }
 
@@ -911,6 +971,7 @@ def filter_admin_actions_from_tools(tools: list, is_admin: bool) -> list:
         return tools  # Admins see everything
 
     import copy
+
     filtered_tools = []
 
     for tool in tools:
@@ -931,10 +992,7 @@ def filter_admin_actions_from_tools(tools: list, is_admin: bool) -> list:
 
         # Remove lines containing [admin] marker
         lines = description.split("\n")
-        filtered_lines = [
-            line for line in lines
-            if "[admin]" not in line.lower()
-        ]
+        filtered_lines = [line for line in lines if "[admin]" not in line.lower()]
         tool_copy["function"]["description"] = "\n".join(filtered_lines)
 
         # Also filter the action enum if present
@@ -945,8 +1003,7 @@ def filter_admin_actions_from_tools(tools: list, is_admin: bool) -> list:
         if "enum" in action_prop:
             admin_actions = ADMIN_ACTIONS.get(tool_name, set())
             action_prop["enum"] = [
-                a for a in action_prop["enum"]
-                if a not in admin_actions
+                a for a in action_prop["enum"] if a not in admin_actions
             ]
 
         filtered_tools.append(tool_copy)
@@ -975,54 +1032,57 @@ RISKY_ACTIONS = {
 # Note: Use word boundaries but allow plurals with optional 's'
 TOOL_KEYWORDS = {
     "github_issue": re.compile(
-        r'\b(issues?|bugs?|reports?|#\d+|problems?|errors?|feature requests?|enhancements?|'
-        r'subscrib\w*|labels?|assign\w*|close[ds]?|reopen\w*|milestones?|'
-        r'sub.?issues?|child|parent|my issues|duplicates?|similar|ticket)\b',
-        re.IGNORECASE
+        r"\b(issues?|bugs?|reports?|#\d+|problems?|errors?|feature requests?|enhancements?|"
+        r"subscrib\w*|labels?|assign\w*|close[ds]?|reopen\w*|milestones?|"
+        r"sub.?issues?|child|parent|my issues|duplicates?|similar|ticket)\b",
+        re.IGNORECASE,
     ),
     "github_pr": re.compile(
-        r'\b(prs?|pull\s*requests?|merge[ds]?|review\w*|approv\w*|diffs?|'
-        r'checks?|ci|workflow|drafts?|auto.?merge)\b',
-        re.IGNORECASE
+        r"\b(prs?|pull\s*requests?|merge[ds]?|review\w*|approv\w*|diffs?|"
+        r"checks?|ci|workflow|drafts?|auto.?merge)\b",
+        re.IGNORECASE,
     ),
     "github_project": re.compile(
-        r'\b(projects?\s*(board)?|boards?|kanban|sprint|columns?|todo|in\s*progress|done|backlog)\b',
-        re.IGNORECASE
+        r"\b(projects?\s*(board)?|boards?|kanban|sprint|columns?|todo|in\s*progress|done|backlog)\b",
+        re.IGNORECASE,
     ),
     "polly_agent": re.compile(
         # Only match explicit coding/implementation requests - NOT searches/summaries
-        r'\b(implement\w*|refactor\w*|coding\s*agent|'
-        r'write\s+(the\s+)?(code|function|class|method)|'
-        r'edit\s+(the\s+)?(code|file)|modify\s+(the\s+)?(code|file)|'
-        r'create\s+(a\s+)?branch|make\s+(a\s+)?branch|new\s+branch|delete\s+branch|'
-        r'commit\s+(the\s+)?changes|push\s+(the\s+)?changes|open\s+(a\s+)?pr|'
-        r'code\s+this|build\s+this|develop\s+this|'
-        r'fix\s+(the\s+)?(bug|issue|error|problem)|'
-        r'change\s+(the\s+)?(code|file)|update\s+(the\s+)?(code|file)|'
-        r'add\s+(a\s+)?(feature|function|method)|remove\s+(the\s+)?(code|function))\b',
-        re.IGNORECASE
+        r"\b(implement\w*|refactor\w*|coding\s*agent|"
+        r"write\s+(the\s+)?(code|function|class|method)|"
+        r"edit\s+(the\s+)?(code|file)|modify\s+(the\s+)?(code|file)|"
+        r"create\s+(a\s+)?branch|make\s+(a\s+)?branch|new\s+branch|delete\s+branch|"
+        r"commit\s+(the\s+)?changes|push\s+(the\s+)?changes|open\s+(a\s+)?pr|"
+        r"code\s+this|build\s+this|develop\s+this|"
+        r"fix\s+(the\s+)?(bug|issue|error|problem)|"
+        r"change\s+(the\s+)?(code|file)|update\s+(the\s+)?(code|file)|"
+        r"add\s+(a\s+)?(feature|function|method)|remove\s+(the\s+)?(code|function))\b",
+        re.IGNORECASE,
     ),
     "github_custom": re.compile(
-        r'\b(stats?|statistics?|activit\w*|stale|spam|health|contributors?|history)\b',
-        re.IGNORECASE
+        r"\b(stats?|statistics?|activit\w*|stale|spam|health|contributors?|history)\b",
+        re.IGNORECASE,
     ),
     "github_overview": re.compile(
-        r'\b(overview|summary|show\s*(me\s*)?(the\s*)?repo|what.*(issues|labels|milestones).*exist|'
-        r'whats?\s*(in\s*)?the\s*repo|repo\s*(status|info))\b',
-        re.IGNORECASE
+        r"\b(overview|summary|show\s*(me\s*)?(the\s*)?repo|what.*(issues|labels|milestones).*exist|"
+        r"whats?\s*(in\s*)?the\s*repo|repo\s*(status|info))\b",
+        re.IGNORECASE,
     ),
     "web_scrape": re.compile(
-        r'\b(scrape|scraping|crawl|fetch\s+(this\s+)?(page|url|website|site|link)|'
-        r'read\s+(this\s+)?(page|url|website|article|doc)|'
-        r'get\s+(the\s+)?(content|text|data)\s+(from|of)\s+(this\s+)?(url|page|site)|'
-        r'extract\s+(from|data)|whats?\s+(on|at)\s+(this\s+)?(url|page|site|link))\b',
-        re.IGNORECASE
+        r"\b(scrape|scraping|crawl|fetch\s+(this\s+)?(page|url|website|site|link)|"
+        r"read\s+(this\s+)?(page|url|website|article|doc)|"
+        r"get\s+(the\s+)?(content|text|data)\s+(from|of)\s+(this\s+)?(url|page|site)|"
+        r"extract\s+(from|data)|whats?\s+(on|at)\s+(this\s+)?(url|page|site|link))\b",
+        re.IGNORECASE,
     ),
     # NOTE: web_search and code_search are NOT filtered by keywords
     # AI decides when to use them based on context - they're always available
 }
 
-def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: bool = False) -> list[dict]:
+
+def filter_tools_by_intent(
+    user_message: str, all_tools: list[dict], is_admin: bool = False
+) -> list[dict]:
     """
     Filter tools based on user intent keywords.
     Fast regex matching - no API calls.
@@ -1048,7 +1108,7 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: b
         return all_tools
 
     # Always include github_issue if user mentions a number like #123
-    if re.search(r'#\d+', user_message):
+    if re.search(r"#\d+", user_message):
         matched_tools.add("github_issue")
         # Could be PR too - add if not already filtering for something specific
         if len(matched_tools) == 1:
@@ -1062,13 +1122,15 @@ def filter_tools_by_intent(user_message: str, all_tools: list[dict], is_admin: b
 
     # Filter tools list
     filtered = [
-        tool for tool in all_tools
+        tool
+        for tool in all_tools
         if tool.get("function", {}).get("name") in matched_tools
         or tool.get("function", {}).get("name") in AI_CONTROLLED_TOOLS
     ]
 
     # Return filtered if we got matches, otherwise all (safety)
     return filtered if filtered else all_tools
+
 
 # =============================================================================
 # TOOL-BASED SYSTEM PROMPT - AI has FULL AUTONOMY
@@ -1171,10 +1233,38 @@ You do NOT know what `claude-large`, `openai-large`, `gemini-large` etc point to
 
 **Pollinations API - CRITICAL:**
 - ⚠️ **YOU CANNOT GENERATE IMAGES** - you have NO image generation tool. Don't offer to generate images!
-- `gen.pollinations.ai` and `enter.pollinations.ai` require API keys - NO FREE ACCESS
+- `gen.pollinations.ai` and `enter.pollinations.ai` require API keys - **NO FREE MODELS** on these endpoints
+- Users get a **free daily Pollen allowance** based on their tier (more for higher tiers), but all models cost Pollen
 - NEVER construct URLs like `image.pollinations.ai/prompt/...` or `pollinations.ai/p/...` - these are LEGACY/DEAD
 - If users want to generate images: tell them to use https://pollinations.ai directly or get an API key
 - Repo branch: `main` (never `master`)
+
+## ⛔ DYNAMIC DATA = ALWAYS FETCH ⛔
+**Models, pricing, availability, features - EVERYTHING changes constantly. NEVER rely on training data.**
+
+**MANDATORY fetch before answering questions about:**
+- Model names, IDs, what they point to → `gen.pollinations.ai/text/models` or `/image/models`
+- Pricing, costs, rates → same endpoints (pricing fields in response)
+- Model capabilities, features → same endpoints
+- API docs, endpoints, parameters → `web_scrape` the API docs
+
+**Understanding pricing fields (all in Pollen):**
+1. **Text models** - per-token:
+   - `promptTextTokens` / `completionTextTokens` - input/output costs
+   - `promptCachedTokens` - discounted cached input (some models)
+   - `promptAudio` / `completionAudio` - audio costs (if supported)
+
+2. **Image models** - ⚠️ TWO systems, easy to confuse!
+   - **Diffusion models**: `completionImageTokens` = flat cost PER IMAGE (1 "token" = 1 image)
+   - **LLM-based image models**: `completionImageTokens` = cost per ACTUAL token (generates THOUSANDS per image!)
+   - Hint: if model has `promptTextTokens` + `promptImageTokens` → likely token-based, cost = tokens × rate
+   - Hint: if model ONLY has `completionImageTokens` → likely flat per-image
+
+3. **Video models** - per-second OR per-token:
+   - `completionVideoSeconds` - per second of video
+   - `completionVideoTokens` - per token (same trap as LLM images)
+
+**The trap:** A low per-token price can be EXPENSIVE per-image if it generates thousands of tokens!
 
 
 ## Tools
@@ -1448,6 +1538,7 @@ def get_tool_system_prompt(is_admin: bool = True) -> str:
         The formatted system prompt appropriate for the user's permission level.
     """
     from datetime import datetime, timezone
+
     current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Select appropriate sections based on admin status
@@ -1462,7 +1553,7 @@ def get_tool_system_prompt(is_admin: bool = True) -> str:
         repo_info=REPO_INFO,
         current_utc=current_utc,
         tools_section=tools_section,
-        polly_agent_section=polly_agent_section
+        polly_agent_section=polly_agent_section,
     )
 
 
@@ -1471,7 +1562,7 @@ TOOL_SYSTEM_PROMPT_STATIC = TOOL_SYSTEM_PROMPT.format(
     repo_info=REPO_INFO,
     current_utc="[dynamic]",
     tools_section=ADMIN_TOOLS_SECTION,
-    polly_agent_section=POLLY_AGENT_SECTION
+    polly_agent_section=POLLY_AGENT_SECTION,
 )
 
 # =============================================================================
