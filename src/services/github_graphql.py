@@ -1565,7 +1565,7 @@ class GitHubGraphQL:
         result = {
             "number": issue["number"],
             "title": issue["title"],
-            "body": body[:1000] + "..." if len(body) > 1000 else body,
+            "body": body,  # Full body - no truncation for editing!
             "state": issue["state"].lower(),
             "url": issue["url"],
             "created_at": issue["createdAt"][:10],
@@ -1633,7 +1633,7 @@ class GitHubGraphQL:
         return {
             "number": issue["number"],
             "title": issue["title"],
-            "body": body[:300] + "..." if len(body) > 300 else body,
+            "body": body,  # Full body - no truncation!
             "state": issue["state"].lower(),
             "url": issue["url"],
             "created_at": issue["createdAt"][:10],
@@ -1861,7 +1861,7 @@ class GitHubGraphQL:
                 "comments": i.get("comments", {}).get("totalCount", 0),
             }
             if include_body:
-                item["body"] = i.get("body", "")[:2000]  # Limit body length
+                item["body"] = i.get("body", "")  # Full body - no truncation!
             formatted.append(item)
 
         return {
