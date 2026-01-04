@@ -1,0 +1,40 @@
+SPORE -> SEED TIER UPGRADE REQUESTS
+====================================
+Total: 34 users (4 Done + 30 Pending)
+
+| # | Discord | GitHub | GitHub ID | Status | Activity | Notes |
+|---|---------|--------|-----------|--------|----------|-------|
+| 1 | thangoffer91 | `thangoffer91` | 141694618 | Done | Joined 2023, 7 repos | Reported in Discord |
+| 2 | ppom415 | `pongsakfms-commits` | 234130949 | Done | Joined 2025, 4 repos | Purchased credits, reported in Discord |
+| 3 | mistermcgurk | `turbsmcgurk` | 119960801 | Done | Joined 2022, 0 repos | Reported in Discord |
+| 4 | vuphuonglam82vpl | `vuphuonglam82vpl` | 138554154 | Done | Joined 2023, 4 repos | Requested in Discord |
+| 5 | 87_9 | `its3li` | TBD | Pending | TBD | Reported in Discord |
+| 6 | _bakhshi | `Bakhshi7889` | TBD | Pending | TBD | Reported in Discord |
+| 7 | G2Rouze | `G2Rouze` | 69155355 | Pending | Joined ~2020, 0 repos | Reported in #6416 |
+| 8 | a_good.friend | `ErBharatMalhotra` | 85725773 | Pending | Joined ~2021, 1 follower | Reported in Discord |
+| 9 | abdelmomen1985 | `abdelmomen1985` | TBD | Pending | TBD | Reported in #6470 |
+| 10 | ace21234 | `acetrondi` | TBD | Pending | TBD | Reported in Discord |
+| 11 | AnhlTruong | `AnhlTruong` | TBD | Pending | TBD | Reported in Discord |
+| 12 | bakmb | `NgoHaiPJS` | TBD | Pending | TBD | Reported in Discord |
+| 13 | baycattttttt | `baycat` | 219122576 | Pending | Joined 2025, 44 repos | Admin request |
+| 14 | brunocurado | `brunocurado` | 38809963 | Pending | TBD | Reported in #6063 |
+| 15 | creepaminer | `creepaminer` | 74074461 | Pending | ID ~2020, 0 repos | Reported in Discord |
+| 16 | cybers_place_0147 | `mdev34-lab` | TBD | Pending | TBD | Reported in Discord |
+| 17 | devilswolf. | `Abhij248` | TBD | Pending | TBD | Reported in Discord |
+| 18 | Elfyau | `Elfyau` | 43360543 | Pending | ID ~2018, 0 repos | Reported in #6401 |
+| 19 | eneryu | `eneryu` | TBD | Pending | TBD | Reported in #6534 (Flower req) |
+| 20 | guru_olahraga | `matiloanjing` | TBD | Pending | TBD | Reported in Discord |
+| 21 | jeff_kk | `LibreConnect` | TBD | Pending | TBD | Reported in Discord |
+| 22 | joelteixeira_37229_39458 | `tjoelc` | 126317705 | Pending | Joined 2023, 6 repos | Reported in Discord |
+| 23 | mumblemummer | `mumblemummer` | TBD | Pending | TBD | Reported in Discord |
+| 24 | noobcoder007 | `prabhatkashyap902` | TBD | Pending | TBD | Reported in Discord |
+| 25 | orville | `stanica` | 1376740 | Pending | Joined 2012, 47 repos | Requested by meatychunks |
+| 26 | otavin3669 | `ocamposbio` | TBD | Pending | TBD | Reported in Discord |
+| 27 | passepartout_fr | `PassepartoutFR` | TBD | Pending | TBD | Reported in Discord |
+| 28 | pwldev | `PwLDev` | TBD | Pending | TBD | Reported in Discord |
+| 29 | s2software_72878 | `s2software` | 1471090 | Pending | Joined ~2012, 6+ repos | Requested in Discord |
+| 30 | Tv4265 | `Tv4265` | 208165909 | Pending | TBD | Reported in #6659 |
+| 31 | vsenikizanat81486 | `Universe-shifting` | 187246741 | Pending | Joined Dec 2024, 2 repos | Reported in #6267 |
+| 32 | whrho | `jc01rho` | 4989674 | Pending | Joined 2013, 66 repos | Reported in Discord |
+| 33 | zamnnykids-source | `zamnnykids-source` | TBD | Pending | TBD | Comment in #6418 |
+| 34 | zerotic | `Simplereally` | TBD | Pending | TBD | Reported in Discord |

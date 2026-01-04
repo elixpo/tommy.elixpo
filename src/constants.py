@@ -20,7 +20,6 @@ MAX_ERROR_LENGTH = 200
 DEFAULT_REPO = "pollinations/pollinations"
 
 # Discord Role IDs
-# Team members with this role won't get inbox:discord label on issues they create
 TEAM_ROLE_ID = 1447964393148125194
 
 # Load repo info for AI context
@@ -1230,6 +1229,12 @@ You do NOT know what `claude-large`, `openai-large`, `gemini-large` etc point to
 - ⚠️ **GitHub tools > web_scrape** - ALWAYS use github_issue/github_pr/github_custom for GitHub data
 - web_scrape is SLOW and may truncate data. GitHub tools use GraphQL - fast, complete, structured!
 - ONLY use web_scrape for GitHub when: fetching raw files, README rendering, or data not available via tools
+
+**GitHub Labels & Triage - DO NOT TOUCH:**
+- ⚠️ **NEVER assign labels** to issues - external GitHub workflows handle ALL labeling automatically
+- You CAN read labels, search by labels, etc - just don't ADD or REMOVE them
+- Same for triage/priority - workflows handle this based on content analysis
+- Your job: create clean issues with good titles/descriptions, let automation handle the rest
 
 **Pollinations API - CRITICAL:**
 - ⚠️ **YOU CANNOT GENERATE IMAGES** - you have NO image generation tool. Don't offer to generate images!
