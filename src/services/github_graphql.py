@@ -45,7 +45,7 @@ class TTLCache:
         """Cache a value."""
         self._cache[key] = (time.time(), value)
 
-    def invalidate(self, key: str = None):
+    def invalidate(self, key: Optional[str] = None):
         """Invalidate specific key or entire cache."""
         if key:
             self._cache.pop(key, None)
@@ -133,7 +133,7 @@ class GitHubGraphQL:
     async def _execute(
         self,
         query: str,
-        variables: dict = None,
+        variables: Optional[dict] = None,
         use_sub_issues: bool = False,
         for_projects: bool = False,
     ) -> dict:
@@ -162,7 +162,7 @@ class GitHubGraphQL:
         if use_sub_issues or "subIssue" in query or "parent" in query:
             headers["GraphQL-Features"] = "sub_issues"
 
-        payload = {"query": query}
+        payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
 
@@ -355,7 +355,7 @@ class GitHubGraphQL:
 
     async def get_issues_batch(
         self, issue_numbers: list[int], include_comments: bool = False
-    ) -> dict[int, dict]:
+    ) -> dict:
         """
         Get multiple issues in ONE request.
 
@@ -550,7 +550,7 @@ class GitHubGraphQL:
     # =========================================================================
 
     async def get_project_id(
-        self, project_number: int, org: str = None
+        self, project_number: int, org: Optional[str] = None
     ) -> Optional[str]:
         """
         Get the GraphQL node ID for a project by its number.
@@ -681,7 +681,7 @@ class GitHubGraphQL:
         return None, "not_found"
 
     async def add_to_project(
-        self, number: int, project_number: int, org: str = None
+        self, number: int, project_number: int, org: Optional[str] = None
     ) -> dict:
         """
         Add an issue OR pull request to a GitHub Project (ProjectV2).
@@ -752,7 +752,7 @@ class GitHubGraphQL:
         }
 
     async def add_issue_to_project(
-        self, issue_number: int, project_number: int, org: str = None
+        self, issue_number: int, project_number: int, org: Optional[str] = None
     ) -> dict:
         """
         Add an issue to a GitHub Project (ProjectV2).
@@ -819,7 +819,7 @@ class GitHubGraphQL:
             "error": "Failed to add issue to project - check permissions",
         }
 
-    async def list_projects(self, org: str = None, limit: int = 20) -> dict:
+    async def list_projects(self, org: Optional[str] = None, limit: int = 20) -> dict:
         """
         List all ProjectV2 boards - checks both organization and repository level.
         Uses simplified query to avoid GitHub API server errors.
@@ -919,7 +919,7 @@ class GitHubGraphQL:
 
         return {"projects": all_projects, "count": len(all_projects)}
 
-    async def get_project_view(self, project_number: int, org: str = None) -> dict:
+    async def get_project_view(self, project_number: int, org: Optional[str] = None) -> dict:
         """
         Get project overview with fields and item counts.
         Tries organization projects first, then repository projects.
@@ -1034,7 +1034,7 @@ class GitHubGraphQL:
         }
 
     async def list_project_items(
-        self, project_number: int, status: str = None, limit: int = 50, org: str = None
+        self, project_number: int, status: Optional[str] = None, limit: int = 50, org: Optional[str] = None
     ) -> dict:
         """
         List items in a project, optionally filtered by status.
@@ -1169,7 +1169,7 @@ class GitHubGraphQL:
         }
 
     async def get_project_item(
-        self, project_number: int, issue_number: int, org: str = None
+        self, project_number: int, issue_number: int, org: Optional[str] = None
     ) -> dict:
         """
         Get a specific item's details from a project.
@@ -1188,7 +1188,7 @@ class GitHubGraphQL:
         }
 
     async def remove_from_project(
-        self, project_number: int, issue_number: int, org: str = None
+        self, project_number: int, issue_number: int, org: Optional[str] = None
     ) -> dict:
         """
         Remove an issue from a project.
@@ -1263,7 +1263,7 @@ class GitHubGraphQL:
         return {"success": False, "error": "Failed to remove item"}
 
     async def set_project_item_status(
-        self, project_number: int, issue_number: int, status: str, org: str = None
+        self, project_number: int, issue_number: int, status: str, org: Optional[str] = None
     ) -> dict:
         """
         Set the Status field for an item in a project.
@@ -1393,7 +1393,7 @@ class GitHubGraphQL:
         issue_number: int,
         field_name: str,
         field_value: str,
-        org: str = None,
+        org: Optional[str] = None,
     ) -> dict:
         """
         Set a custom field value for an item in a project.
@@ -1651,8 +1651,8 @@ class GitHubGraphQL:
         request: str,
         include_body: bool = False,
         limit: int = 50,
-        graphql_query: str = None,
-        rest_endpoint: str = None,
+        graphql_query: Optional[str] = None,
+        rest_endpoint: Optional[str] = None,
     ) -> dict:
         """
         Execute flexible requests - supports 3 modes:
@@ -1721,7 +1721,10 @@ class GitHubGraphQL:
 
             url = f"https://api.github.com/repos/{self.owner}/{self.repo}/{endpoint}"
             try:
-                headers = await self._get_headers()
+                token = await self._get_token()
+                if not token:
+                    return {"error": "GitHub token not configured"}
+                headers = {"Authorization": f"Bearer {token}"}
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=headers) as resp:
                         if resp.status == 200:
@@ -2494,7 +2497,7 @@ class GitHubGraphQL:
     # =========================================================================
 
     async def get_edit_history(
-        self, number: int, is_pr: bool = False, limit: int = 10, edit_index: int = None
+        self, number: int, is_pr: bool = False, limit: int = 10, edit_index: Optional[int] = None
     ) -> dict:
         """
         Get edit history for an issue or PR.

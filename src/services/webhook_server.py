@@ -326,7 +326,7 @@ class GitHubWebhookServer:
         )
 
         # Check if user is a GitHub admin
-        is_admin = config.is_github_admin(github_user)
+        is_admin = config.is_github_admin(github_user or "")
         logger.info(f"GitHub user @{github_user} is_admin={is_admin}")
 
         # If admin_only_mentions is enabled, reject non-admin users
@@ -352,7 +352,6 @@ class GitHubWebhookServer:
                 thread_history=None,
                 image_urls=[],
                 is_admin=is_admin,
-                source="github",
             )
 
             response_text = result.get("response", "")

@@ -290,7 +290,8 @@ async def fetch_thread_history(
         starter_msg = None
         try:
             # Thread ID == starter message ID, fetch from PARENT channel
-            if thread.parent:
+            # Only TextChannel has fetch_message, ForumChannel does not
+            if thread.parent and isinstance(thread.parent, discord.TextChannel):
                 logger.info(
                     f"Fetching starter message: thread.id={thread.id}, parent={thread.parent}"
                 )
@@ -771,7 +772,7 @@ async def on_message(message: discord.Message):
         # ONLY respond if: @mentioned OR replying to bot's message
         # Having a session is NOT enough - user must explicitly engage
         should_respond = (
-            bot.user.mentioned_in(message) and not message.mention_everyone
+            bot.user is not None and bot.user.mentioned_in(message) and not message.mention_everyone
         ) or is_reply_to_bot
 
         if not should_respond:
@@ -813,7 +814,7 @@ async def on_message(message: discord.Message):
         return
 
     # Respond if @mentioned OR if replying to bot's message
-    if not bot.user.mentioned_in(message) and not is_reply_to_bot:
+    if bot.user is None or (not bot.user.mentioned_in(message) and not is_reply_to_bot):
         return
 
     if message.mention_everyone:
@@ -937,12 +938,14 @@ async def handle_dm_message(message: discord.Message):
 
 
 async def handle_reply_context(
-    message: discord.Message, text: str, ref_msg: discord.Message = None
+    message: discord.Message, text: str, ref_msg: Optional[discord.Message] = None
 ) -> str:
     """Handle when message is a reply to another message. Uses cached ref_msg if provided."""
     try:
         # Use provided ref_msg to avoid duplicate fetch
         if ref_msg is None:
+            if message.reference is None or message.reference.message_id is None:
+                return text  # No reference to fetch
             ref_msg = await message.channel.fetch_message(message.reference.message_id)
 
         # Include both authors when replying to someone else's message
@@ -1019,10 +1022,16 @@ async def start_conversation(
 
 async def handle_thread_message(message: discord.Message, session: ConversationSession):
     """Handle a message in an existing thread."""
+    # Type guard: this function is only called for thread messages
+    if not isinstance(message.channel, discord.Thread):
+        logger.warning(f"handle_thread_message called with non-thread channel: {type(message.channel)}")
+        return
+
+    channel = message.channel  # Now typed as discord.Thread
     image_urls, video_urls, file_urls = extract_media_urls(message)
 
     # Check if there's a pending confirmation for this thread and validate user
-    thread_id = str(message.channel.id)
+    thread_id = str(channel.id)
     from .services.code_agent.tools.polly_agent import (
         clear_pending_confirmation,
         get_task_owner_id,
@@ -1055,12 +1064,12 @@ async def handle_thread_message(message: discord.Message, session: ConversationS
         image_urls=image_urls + video_urls,  # Combined for session storage (not files)
     )
 
-    async with message.channel.typing():
+    async with channel.typing():
         # Fetch thread history for context
-        thread_history = await fetch_thread_history(message.channel)
+        thread_history = await fetch_thread_history(channel)
 
         await process_message(
-            channel=message.channel,
+            channel=channel,
             user=message.author,
             text=message.content,
             image_urls=image_urls,
@@ -1102,21 +1111,23 @@ async def process_message(
 
     # Build tool context - this is passed to ALL tool handlers for permission checks
     # This is thread-safe because it's created per-request, not globally registered
+    # Determine channel/thread IDs based on channel type
+    if isinstance(channel, discord.Thread) and channel.parent_id:
+        context_channel_id = channel.parent_id
+        context_thread_id: Optional[int] = channel.id
+    else:
+        context_channel_id = channel.id
+        context_thread_id = None
+
     tool_context = {
         "is_admin": user_is_admin,
         "user_id": user.id,
         "user_name": str(user),
         "reporter": session.original_author_name,
-        "channel_id": (
-            channel.parent_id
-            if hasattr(channel, "parent_id") and channel.parent_id
-            else channel.id
-        ),  # Parent channel if in thread
-        "thread_id": (
-            channel.id if hasattr(channel, "parent_id") and channel.parent_id else None
-        ),  # Current thread if any
+        "channel_id": context_channel_id,
+        "thread_id": context_thread_id,
         "guild_id": (
-            channel.guild.id if hasattr(channel, "guild") and channel.guild else None
+            channel.guild.id if channel.guild else None
         ),
         "user_role_ids": (
             [r.id for r in user.roles] if isinstance(user, discord.Member) else []
@@ -1215,7 +1226,7 @@ async def process_message(
 
 
 async def send_long_message(
-    channel: discord.TextChannel,
+    channel: Union[discord.Thread, discord.TextChannel],
     text: str,
     max_length: int = 2000,
     reply_to: Optional[discord.Message] = None,

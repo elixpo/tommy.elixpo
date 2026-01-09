@@ -36,7 +36,7 @@ class ConversationSession:
     original_author_id: int = 0
     original_author_name: str = ""
 
-    def add_message(self, role: str, content: str, author: str, author_id: int, image_urls: list[str] = None):
+    def add_message(self, role: str, content: str, author: str, author_id: int, image_urls: Optional[list[str]] = None):
         """Add a message to the conversation."""
         self.messages.append(Message(
             role=role,

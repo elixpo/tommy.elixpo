@@ -312,7 +312,7 @@ class ProgressEmbedManager:
         if self.embed:
             self.embed.steps.clear()
             self.embed.is_complete = False
-            self.embed.success = True
+            self.embed.is_failed = False
 
     def start_step(self, index: int, details: Optional[str] = None):
         """Mark step as in progress."""

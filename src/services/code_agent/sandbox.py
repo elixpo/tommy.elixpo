@@ -259,12 +259,16 @@ class TerminalManager:
             stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
         )
 
+        # These should always exist since we specified PIPE
+        if proc.stdin is None or proc.stdout is None:
+            raise RuntimeError("Failed to create subprocess pipes")
+
         terminal = TerminalSession(
             thread_id=thread_id,
             process=proc,
             stdin=proc.stdin,
             stdout=proc.stdout,
-            stderr=proc.stderr,
+            stderr=proc.stderr or proc.stdout,  # stderr merged into stdout
         )
 
         # Initialize the shell environment
@@ -1336,7 +1340,7 @@ class Sandbox:
     """Legacy sandbox class - now uses PersistentSandbox internally."""
     id: str
     container_id: Optional[str] = None
-    workspace_path: Path = None
+    workspace_path: Optional[Path] = None
     repo_url: Optional[str] = None
     branch: str = "main"
     created_at: datetime = field(default_factory=datetime.utcnow)

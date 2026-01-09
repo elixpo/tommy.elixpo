@@ -48,7 +48,7 @@ class SessionManager:
         user_name: str,
         initial_message: str,
         topic_summary: str,
-        image_urls: list[str] = None
+        image_urls: Optional[list[str]] = None
     ) -> ConversationSession:
         """Create a new conversation session for a thread."""
         # Evict oldest sessions if at capacity (LRU eviction)
@@ -75,7 +75,7 @@ class SessionManager:
         content: str,
         author: str,
         author_id: int,
-        image_urls: list[str] = None
+        image_urls: Optional[list[str]] = None
     ):
         """Add a message to an existing session."""
         session.add_message(role, content, author, author_id, image_urls)

@@ -74,9 +74,9 @@ def _save_tasks():
                 "branch_name": task_data.get("branch_name"),
                 "phase": task_data.get("phase", "unknown"),
                 "started_at": (
-                    task_data.get("started_at").isoformat()
-                    if isinstance(task_data.get("started_at"), datetime)
-                    else task_data.get("started_at")
+                    started_at.isoformat()
+                    if isinstance((started_at := task_data.get("started_at")), datetime)
+                    else started_at
                 ),
                 "files_changed": task_data.get("files_changed", []),
                 "user": task_data.get("user"),
@@ -134,7 +134,7 @@ def _build_interaction_summary(
     output: str | None,
     files_changed: list[str],
     success: bool,
-    todos: list = None,
+    todos: Optional[list] = None,
 ) -> dict:
     """
     Build a STRUCTURED summary of an interaction for bot AI context.
@@ -278,7 +278,7 @@ async def tool_polly_agent(
     discord_thread_id: Optional[int] = None,  # Thread ID for automatic task_id lookup
     discord_user_name: Optional[str] = None,
     # Context dict injected by pollinations client (contains admin status, user info)
-    _context: dict = None,
+    _context: Optional[dict] = None,
     # Legacy admin flag - prefer using _context
     _is_admin: bool = False,
     **kwargs,
@@ -387,6 +387,8 @@ async def tool_polly_agent(
 
         # task action uses ccr - THE ONLY WAY TO EDIT CODE
         if action == "task":
+            if not task:
+                return {"error": "task parameter is required for 'task' action"}
             return await _handle_code_task(
                 task=task,
                 repo=repo,
@@ -1277,7 +1279,9 @@ async def _get_github_token() -> str:
     # Try GitHub App first
     if config.use_github_app and github_app_auth:
         try:
-            return await github_app_auth.get_token()
+            token = await github_app_auth.get_token()
+            if token:
+                return token
         except Exception:
             pass
 
@@ -1288,7 +1292,7 @@ async def _get_github_token() -> str:
 
 
 async def _github_api(
-    method: str, endpoint: str, data: dict = None
+    method: str, endpoint: str, data: Optional[dict] = None
 ) -> tuple[int, dict]:
     """Make GitHub API request using shared session from github_manager."""
     import aiohttp

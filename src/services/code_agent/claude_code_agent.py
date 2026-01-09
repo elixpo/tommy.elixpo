@@ -356,8 +356,8 @@ class ClaudeCodeAgent:
             # Execute ccr (pass Discord IDs for terminal ownership tracking)
             result = await sandbox.run_ccr(
                 branch, prompt,
-                discord_user_id=discord_user_id,
-                discord_channel_id=discord_channel_id,
+                discord_user_id=discord_user_id or 0,
+                discord_channel_id=discord_channel_id or 0,
             )
 
         finally:

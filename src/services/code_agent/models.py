@@ -186,6 +186,8 @@ class ModelRouter:
         """Get or create the aiohttp session."""
         if self._session is None or self._session.closed:
             await self.initialize()
+        if self._session is None:
+            raise RuntimeError("Failed to initialize aiohttp session")
         return self._session
 
     def get_model_for_task(self, task_type: TaskType, context_size: int = 0) -> str:
