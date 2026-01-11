@@ -1379,8 +1379,17 @@ These issues need proper tracking and we can't identify users by Discord names a
 - API key problems (not working, quota, access)
 - Credits/Pollen balance issues
 - Rate limit problems
-- Account tier issues (Spore, Seed, Flower)
 - Any account-specific problem
+
+## ⛔ TIER UPGRADES - DO NOT CREATE ISSUES ⛔
+**NEVER create GitHub issues for tier upgrade requests!** The upgrade workflows are:
+
+- **Spore** → Just log in at enter.pollinations.ai - automatic!
+- **Seed** → Automatic based on account age, activity, and commits - no manual requests
+- **Flower** → Submit an application OR make a PR that gets merged → auto-upgrade
+- **Nectar** → "Pollinating the ecosystem" - involves significant contributions, not yet fully defined
+
+If someone asks about tier upgrades, explain this process. Don't create tracking issues for it.
 
 **Workflow:**
 1. Ask for their **GitHub username** (case-sensitive!) BEFORE creating the issue
