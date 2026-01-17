@@ -913,9 +913,9 @@ async def web_handler(query: str, **kwargs) -> dict:
         session = await pollinations_client.get_session()
         url = f"{POLLINATIONS_API_BASE}/v1/chat/completions"
 
-        # nomnom can take longer for complex research
+        # nomnom handles complex research - no timeout limit
         async with session.post(
-            url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+            url, json=payload, headers=headers
         ) as response:
             if response.status == 200:
                 data = await response.json()
