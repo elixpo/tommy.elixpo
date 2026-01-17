@@ -628,20 +628,15 @@ WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": """Real-time web search for current info.
-mode="fast": Quick factual lookups (faster, less tokens)
-mode="reasoning": Multi-step analysis with citations (slower, thorough research)""",
+        "description": """Web search with reasoning and citations (Perplexity).
+Use for complex queries needing multi-step analysis.
+For simple factual lookups, prefer google_search (native, faster).""",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
                     "description": "The search query - be specific for better results",
-                },
-                "mode": {
-                    "type": "string",
-                    "enum": ["fast", "reasoning"],
-                    "description": "fast=quick lookups (default), reasoning=complex analysis",
                 },
             },
             "required": ["query"],
@@ -1306,7 +1301,7 @@ Don't guess. Don't assume. Don't "remember". FETCH.
 
 **Web Search (fastest → slowest):**
 1. `google_search` - Native Gemini tool, INSTANT. Use for simple factual lookups.
-2. `web_search` - Perplexity-powered. Use mode="fast" for quick, mode="reasoning" for complex analysis.
+2. `web_search` - Perplexity reasoning with citations. Use for complex queries needing analysis.
 3. `web` - nomnom model (search+scrape+crawl+code). Use ONLY for deep multi-step research. SLOW but powerful.
 
 **URL/Scraping (fastest → slowest):**
@@ -1606,7 +1601,7 @@ ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, mil
 - `github_project` - Projects V2: list, view, add items, set status
 - `polly_agent` - **Code agent** (implement, edit code, create branches, PRs)
 - `github_custom` - Raw data (commits, history, stats)
-- `web_search` - Web search (mode="fast"|"reasoning")
+- `web_search` - Web search with reasoning (Perplexity)
 - `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
@@ -1617,7 +1612,7 @@ NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels,
 - `github_pr` - PRs: get, list, comment (read-only)
 - `github_project` - Projects V2: list, view (read-only)
 - `github_custom` - Raw data (commits, history, stats)
-- `web_search` - Web search (mode="fast"|"reasoning")
+- `web_search` - Web search with reasoning (Perplexity)
 - `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""

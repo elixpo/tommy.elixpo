@@ -814,25 +814,20 @@ pollinations_client = PollinationsClient()
 # WEB SEARCH HANDLER - Uses Perplexity models via Pollinations API
 # =============================================================================
 
-# Perplexity models available via Pollinations
-PERPLEXITY_MODELS = {
-    "fast": "perplexity-fast",  # Fast, simple lookups
-    "reasoning": "perplexity-reasoning",  # Complex analysis
-}
-
-
-async def web_search_handler(query: str, mode: str = "fast", **kwargs) -> dict:
+async def web_search_handler(query: str, **kwargs) -> dict:
     """
-    Handle web_search tool calls using Perplexity models via Pollinations API.
+    Handle web_search tool calls using Perplexity reasoning model.
+    
+    For simple searches, use google_search (native, faster).
+    This tool is for complex queries needing multi-step reasoning + citations.
 
     Args:
         query: The search query
-        mode: "fast" for quick lookups, "reasoning" for complex analysis
 
     Returns:
         Dict with search results or error
     """
-    model = PERPLEXITY_MODELS.get(mode, PERPLEXITY_MODELS["fast"])
+    model = "perplexity-reasoning"
 
     messages = [
         {
