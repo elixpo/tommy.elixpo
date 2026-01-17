@@ -98,7 +98,7 @@ class DiscordSearchClient:
             await self._session.close()
 
     # =========================================================================
-    # MESSAGE SEARCH (Preview API)
+    # MESSAGE SEARCH (Preview API - officially opened to bots Aug 2025)
     # =========================================================================
 
     async def search_messages(
@@ -107,100 +107,150 @@ class DiscordSearchClient:
         query: str,
         channel_id: Optional[int] = None,
         author_id: Optional[int] = None,
+        author_type: Optional[str] = None,  # user, bot, webhook, -bot (exclude bots)
         mentions: Optional[int] = None,
-        has: Optional[str] = None,  # link, embed, file, video, image, sound, sticker
+        mention_everyone: Optional[bool] = None,
+        has: Optional[str] = None,  # link, embed, file, video, image, sound, sticker, poll
+        pinned: Optional[bool] = None,
         before: Optional[str] = None,  # snowflake or date
         after: Optional[str] = None,  # snowflake or date
+        sort_by: str = "timestamp",  # timestamp or relevance
+        sort_order: str = "desc",  # desc (newest) or asc (oldest)
+        link_hostname: Optional[str] = None,  # filter by URL domain
+        attachment_extension: Optional[str] = None,  # filter by file type (pdf, txt, etc)
         limit: int = 25,
         offset: int = 0,
-        accessible_channel_ids: Optional[
-            set
-        ] = None,  # SECURITY: Filter to user's accessible channels
+        accessible_channel_ids: Optional[set] = None,  # SECURITY: Filter to user's accessible channels
     ) -> Dict[str, Any]:
         """
-        Search messages in a guild using Discord's preview search API.
+        Search messages in a guild using Discord's search API.
 
         Args:
             guild_id: The guild to search in
-            query: Search query text
+            query: Search query text (max 1024 chars)
             channel_id: Filter to specific channel
             author_id: Filter by message author
-            mentions: Filter messages mentioning this user
-            has: Filter by attachment type (link, embed, file, video, image, sound, sticker)
-            before: Messages before this date/snowflake
-            after: Messages after this date/snowflake
-            limit: Max results (default 25, max 25)
-            offset: Offset for pagination
+            author_type: Filter by author type (user, bot, webhook, -bot to exclude bots)
+            mentions: Filter messages mentioning this user ID
+            mention_everyone: Filter messages with @everyone
+            has: Filter by content type (link, embed, file, video, image, sound, sticker, poll)
+            pinned: Filter pinned messages only
+            before: Messages before this date/snowflake (max_id)
+            after: Messages after this date/snowflake (min_id)
+            sort_by: Sort by 'timestamp' (default) or 'relevance'
+            sort_order: 'desc' (newest first, default) or 'asc' (oldest first)
+            link_hostname: Filter by URL hostname (e.g., 'github.com')
+            attachment_extension: Filter by file extension (e.g., 'pdf', 'txt')
+            limit: Max results (1-25, default 25)
+            offset: Pagination offset (max 9975)
             accessible_channel_ids: SECURITY - only return messages from these channels
 
         Returns:
             Search results with messages and metadata
         """
+        import asyncio
+
         session = await self.get_session()
 
         # Build query params
-        params = {"content": query}
+        params = {"content": query[:1024]}  # Max 1024 chars
 
         if channel_id:
             params["channel_id"] = str(channel_id)
         if author_id:
             params["author_id"] = str(author_id)
+        if author_type:
+            params["author_type"] = author_type
         if mentions:
             params["mentions"] = str(mentions)
+        if mention_everyone is not None:
+            params["mention_everyone"] = str(mention_everyone).lower()
         if has:
             params["has"] = has
+        if pinned is not None:
+            params["pinned"] = str(pinned).lower()
         if before:
             params["max_id"] = before
         if after:
             params["min_id"] = after
+        if sort_by:
+            params["sort_by"] = sort_by
+        if sort_order:
+            params["sort_order"] = sort_order
+        if link_hostname:
+            params["link_hostname"] = link_hostname
+        if attachment_extension:
+            params["attachment_extension"] = attachment_extension
         if limit:
             params["limit"] = min(limit, 25)
         if offset:
-            params["offset"] = offset
+            params["offset"] = min(offset, 9975)  # Max offset is 9975
+
+        # Always include NSFW results (bot has access, user perms checked via accessible_channel_ids)
+        params["include_nsfw"] = "true"
 
         url = f"{DISCORD_API_BASE}/guilds/{guild_id}/messages/search"
 
-        try:
-            async with session.get(url, headers=self.headers, params=params) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    messages = self._format_messages(data.get("messages", []))
+        # Retry logic for HTTP 202 (index not ready)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                async with session.get(url, headers=self.headers, params=params) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        messages = self._format_messages(data.get("messages", []))
+                        total_results = data.get("total_results", len(messages))
 
-                    # SECURITY: Filter messages to only channels user can access
-                    if accessible_channel_ids is not None:
-                        original_count = len(messages)
-                        messages = [
-                            m
-                            for m in messages
-                            if int(m.get("channel_id", 0)) in accessible_channel_ids
-                        ]
-                        filtered_count = original_count - len(messages)
-                        if filtered_count > 0:
-                            logger.info(
-                                f"SECURITY: Filtered {filtered_count} messages from private channels"
-                            )
+                        # SECURITY: Filter messages to only channels user can access
+                        if accessible_channel_ids is not None:
+                            original_count = len(messages)
+                            messages = [
+                                m
+                                for m in messages
+                                if int(m.get("channel_id", 0)) in accessible_channel_ids
+                            ]
+                            filtered_count = original_count - len(messages)
+                            if filtered_count > 0:
+                                logger.info(
+                                    f"SECURITY: Filtered {filtered_count} messages from private channels"
+                                )
 
-                    return {
-                        "success": True,
-                        "total_results": len(
-                            messages
-                        ),  # Adjusted count after filtering
-                        "messages": messages,
-                    }
-                elif resp.status == 403:
-                    return {
-                        "error": "Bot doesn't have permission to search messages in this guild"
-                    }
-                elif resp.status == 429:
-                    retry_after = resp.headers.get("Retry-After", "unknown")
-                    return {"error": f"Rate limited. Retry after {retry_after} seconds"}
-                else:
-                    text = await resp.text()
-                    logger.error(f"Message search failed: {resp.status} - {text}")
-                    return {"error": f"Search failed: {resp.status}"}
-        except Exception as e:
-            logger.error(f"Message search error: {e}")
-            return {"error": str(e)}
+                        return {
+                            "success": True,
+                            "total_results": total_results,
+                            "returned": len(messages),
+                            "offset": offset,
+                            "messages": messages,
+                        }
+                    elif resp.status == 202:
+                        # Index not ready - retry after delay
+                        retry_after = 2
+                        try:
+                            data = await resp.json()
+                            retry_after = data.get("retry_after", 2)
+                        except:
+                            pass
+                        if attempt < max_retries - 1:
+                            logger.info(f"Search index not ready, retrying in {retry_after}s...")
+                            await asyncio.sleep(retry_after)
+                            continue
+                        return {"error": "Search index not ready. Try again in a few seconds."}
+                    elif resp.status == 403:
+                        return {
+                            "error": "Bot doesn't have permission to search messages in this guild"
+                        }
+                    elif resp.status == 429:
+                        retry_after = resp.headers.get("Retry-After", "unknown")
+                        return {"error": f"Rate limited. Retry after {retry_after} seconds"}
+                    else:
+                        text = await resp.text()
+                        logger.error(f"Message search failed: {resp.status} - {text}")
+                        return {"error": f"Search failed: {resp.status}"}
+            except Exception as e:
+                logger.error(f"Message search error: {e}")
+                return {"error": str(e)}
+
+        return {"error": "Search failed after retries"}
 
     def _format_messages(self, messages: List[List[Dict]]) -> List[Dict]:
         """Format message results for readability."""
@@ -767,6 +817,14 @@ async def tool_discord_search(
     before: Optional[str] = None,
     after: Optional[str] = None,
     limit: int = 50,
+    # New search parameters (Aug 2025 Discord API)
+    sort_by: str = "timestamp",  # timestamp or relevance
+    sort_order: str = "desc",  # desc (newest) or asc (oldest)
+    author_type: Optional[str] = None,  # user, bot, webhook, -bot
+    pinned: Optional[bool] = None,
+    link_hostname: Optional[str] = None,  # filter by URL domain
+    attachment_extension: Optional[str] = None,  # filter by file type
+    offset: int = 0,  # pagination offset
     # Context injected by pollinations client
     _context: dict = None,
     **kwargs,
@@ -961,10 +1019,17 @@ async def tool_discord_search(
             query=query,
             channel_id=channel_id,
             author_id=user_id,
+            author_type=author_type,
             has=has,
+            pinned=pinned,
             before=before,
             after=after,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            link_hostname=link_hostname,
+            attachment_extension=attachment_extension,
             limit=limit,
+            offset=offset,
             accessible_channel_ids=accessible_channel_ids,
         )
         return result

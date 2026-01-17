@@ -805,19 +805,30 @@ DISCORD_SEARCH_TOOL = {
     "type": "function",
     "function": {
         "name": "discord_search",
-        "description": """Search EVERYTHING in the Discord server. Mentions like <@123> are auto-parsed.
+        "description": """Search Discord server - messages, members, channels, threads, roles.
+Mentions like <@123>, <#456>, <@&789> are AUTO-PARSED to extract IDs.
 
-Actions:
-- messages: Search message content (query required) - find past discussions, decisions, context
-- members: Search members by name/nickname, look up by user_id, or filter by role
-- channels: Search channels by name or type (text, voice, forum, category)
+ACTIONS:
+- messages: Search message content (query required). Can search weeks/months back!
+- members: Search by name/nickname, or filter by role
+- channels: Search by name or type (text, voice, forum, etc.)
 - threads: Search threads by name (includes archived)
-- roles: Search roles by name, optionally include member lists
-- history: Get recent messages from a channel (no query needed) - "what's happening in #dev?"
-- context: Get messages around a specific message_id - conversation context
-- thread_history: Get thread messages with metadata + pagination - "show me that discussion thread"
+- roles: Search roles, optionally list members with that role
+- history: Recent messages from channel (no query needed)
+- context: Messages around a specific message_id
+- thread_history: Thread messages with pagination
 
-Use for: "what did we discuss about X?", "who has role Y?", "find the channel for Z", "recent messages in #general", "<@user> said something about...".""",
+EXAMPLES:
+- "gemini discussion" → finds all messages mentioning gemini
+- "gemini in #dev" → channel_name="dev", query="gemini"
+- "files from @user" → user_id from mention, has="file"
+- "pinned messages" → pinned=true
+- "oldest first" → sort_order="asc"
+- "links to github" → link_hostname="github.com"
+- "pdf files" → attachment_extension="pdf"
+- "exclude bots" → author_type="-bot"
+
+Security: Results filtered to channels the user can access.""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -833,15 +844,15 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
                         "context",
                         "thread_history",
                     ],
-                    "description": "What to search or fetch",
+                    "description": "What to search",
                 },
                 "query": {
                     "type": "string",
-                    "description": "Search term (required for messages). Mentions like <@123>, <#456>, <@&789> are auto-parsed to extract IDs.",
+                    "description": "Search text (required for messages). Mentions auto-parsed.",
                 },
                 "channel_id": {
                     "type": "integer",
-                    "description": "Target channel for messages/history/context actions",
+                    "description": "Filter to specific channel",
                 },
                 "channel_name": {
                     "type": "string",
@@ -849,12 +860,12 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
                 },
                 "user_id": {
                     "type": "integer",
-                    "description": "Look up member by ID (action=members), or filter messages by author",
+                    "description": "Filter by author or look up member",
                 },
                 "role_id": {"type": "integer", "description": "Filter members by role"},
                 "role_name": {
                     "type": "string",
-                    "description": "Find role by name (alternative to role_id)",
+                    "description": "Find role by name",
                 },
                 "message_id": {
                     "type": "integer",
@@ -862,12 +873,60 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
                 },
                 "thread_id": {
                     "type": "integer",
-                    "description": "Target thread for thread_history action",
+                    "description": "Target thread for thread_history",
                 },
                 "channel_type": {
                     "type": "string",
                     "enum": ["text", "voice", "forum", "category", "news", "stage"],
                     "description": "Filter channels by type",
+                },
+                "has": {
+                    "type": "string",
+                    "enum": ["link", "embed", "file", "video", "image", "sound", "sticker", "poll"],
+                    "description": "Filter by attachment type",
+                },
+                "before": {
+                    "type": "string",
+                    "description": "Messages before this date/snowflake ID",
+                },
+                "after": {
+                    "type": "string",
+                    "description": "Messages after this date/snowflake ID",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default 25, max 100 for history)",
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["timestamp", "relevance"],
+                    "description": "Sort by time (default) or relevance to query",
+                },
+                "sort_order": {
+                    "type": "string",
+                    "enum": ["desc", "asc"],
+                    "description": "desc=newest first (default), asc=oldest first",
+                },
+                "author_type": {
+                    "type": "string",
+                    "enum": ["user", "bot", "webhook", "-bot"],
+                    "description": "Filter by author type. -bot excludes bots.",
+                },
+                "pinned": {
+                    "type": "boolean",
+                    "description": "Filter to pinned messages only",
+                },
+                "link_hostname": {
+                    "type": "string",
+                    "description": "Filter by URL domain (e.g., 'github.com', 'youtube.com')",
+                },
+                "attachment_extension": {
+                    "type": "string",
+                    "description": "Filter by file type (e.g., 'pdf', 'png', 'txt')",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset (max 9975, use with limit for paging)",
                 },
                 "include_archived": {
                     "type": "boolean",
@@ -876,31 +935,6 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
                 "include_members": {
                     "type": "boolean",
                     "description": "Include member list for roles (default false)",
-                },
-                "has": {
-                    "type": "string",
-                    "enum": [
-                        "link",
-                        "embed",
-                        "file",
-                        "video",
-                        "image",
-                        "sound",
-                        "sticker",
-                    ],
-                    "description": "Filter messages by attachment type",
-                },
-                "before": {
-                    "type": "string",
-                    "description": "Messages before this date/ID (also for pagination in history/thread_history)",
-                },
-                "after": {
-                    "type": "string",
-                    "description": "Messages after this date/ID",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max results (default 25, max 100 for history)",
                 },
             },
             "required": ["action"],
