@@ -595,7 +595,33 @@ Returns: Code snippets with file paths.""",
 }
 
 # =============================================================================
-# WEB SEARCH TOOL - Uses Perplexity models via Pollinations API
+# NATIVE GEMINI TOOLS - Built-in tools that Gemini executes natively (FAST!)
+# These are passed with minimal definition - Gemini handles them internally
+# =============================================================================
+
+NATIVE_GOOGLE_SEARCH = {
+    "type": "function",
+    "function": {
+        "name": "google_search",
+    },
+}
+
+NATIVE_CODE_EXECUTION = {
+    "type": "function",
+    "function": {
+        "name": "code_execution",
+    },
+}
+
+NATIVE_URL_CONTEXT = {
+    "type": "function",
+    "function": {
+        "name": "url_context",
+    },
+}
+
+# =============================================================================
+# WEB SEARCH TOOL - Uses Perplexity models via Pollinations API (for complex queries)
 # =============================================================================
 
 WEB_SEARCH_TOOL = {
@@ -887,15 +913,57 @@ Use for: "what did we discuss about X?", "who has role Y?", "find the channel fo
     },
 }
 
+# =============================================================================
+# WEB TOOL - Deep web research using nomnom model (search + scrape + crawl + code)
+# Use for complex research, multi-step analysis, data extraction with code
+# =============================================================================
+
+WEB_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web",
+        "description": """Deep web research tool powered by nomnom model.
+Use this for COMPLEX tasks that need multiple capabilities combined:
+- Multi-source research with analysis
+- Scraping sites that need JavaScript/anti-bot bypass
+- Data extraction + Python analysis/visualization
+- Crawling multiple pages and synthesizing results
+
+For SIMPLE tasks, prefer faster tools:
+- Quick searches → google_search (native, instant)
+- Complex reasoning search → web_search (perplexity)
+- URL scraping → web_scrape (fast)
+- Code execution → code_execution (native)
+
+This tool is SLOW but POWERFUL - combines search, scrape, crawl, and code execution.""",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language request. Examples: 'Find top 10 laptops on Amazon and compare specs', 'Research latest AI news and summarize', 'Scrape this Discord CDN URL and parse the JSON'",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
 
 def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> list:
-    """Get tool list with optional features."""
+    """Get tool list with optional features and native Gemini tools."""
     tools = base_tools.copy()
 
-    # Always include web_search, web_scrape, and discord_search
+    # Native Gemini tools (FAST - executed by Gemini internally)
+    tools.append(NATIVE_GOOGLE_SEARCH)
+    tools.append(NATIVE_CODE_EXECUTION)
+    tools.append(NATIVE_URL_CONTEXT)
+
+    # Custom tools (our implementations)
     tools.append(WEB_SEARCH_TOOL)
     tools.append(WEB_SCRAPE_TOOL)
     tools.append(DISCORD_SEARCH_TOOL)
+    tools.append(WEB_TOOL)  # nomnom - deep research (use sparingly, slow but powerful)
 
     # Conditionally include code_search if embeddings enabled
     if embeddings_enabled:
@@ -1226,13 +1294,31 @@ For ANY Pollinations question, FETCH FIRST:
 Don't guess. Don't assume. Don't "remember". FETCH.
 
 **USE TOOLS OR SHUT UP. No exceptions:**
-- Model names, IDs, what they point to → `web_scrape` the models endpoint
-- API capabilities, endpoints, parameters → `web_scrape` the API docs
-- Pricing, rate limits, tiers → `web_scrape` to check
+- Model names, IDs, what they point to → `url_context` or `web_scrape` the models endpoint
+- API capabilities, endpoints, parameters → `url_context` or `web_scrape` the API docs
+- Pricing, rate limits, tiers → `url_context` or `web_scrape` to check
 - Features (i2i, inpainting, upscaling, etc.) → `web_scrape` or `code_search`
 - GitHub issues, PRs, code → `github_issue`, `github_pr`, `code_search`
 - Discord history, users, channels → `discord_search`
-- Current events, external info → `web_search`
+- Current events, external info → see tool hierarchy below
+
+## 🔧 TOOL HIERARCHY - Use the RIGHT tool for the job
+
+**Web Search (fastest → slowest):**
+1. `google_search` - Native Gemini tool, INSTANT. Use for simple factual lookups.
+2. `web_search` - Perplexity-powered. Use mode="fast" for quick, mode="reasoning" for complex analysis.
+3. `web` - nomnom model (search+scrape+crawl+code). Use ONLY for deep multi-step research. SLOW but powerful.
+
+**URL/Scraping (fastest → slowest):**
+1. `url_context` - Native Gemini tool, FAST. Use for reading single URLs.
+2. `web_scrape` - Crawl4AI. Use for anti-bot bypass, JS rendering, structured extraction.
+3. `web` - nomnom. Use ONLY when you need scrape + analysis combined.
+
+**Code Execution:**
+1. `code_execution` - Native Gemini tool. Use for calculations, data processing.
+2. `web` - nomnom. Use ONLY when code needs web data (scrape → process → analyze).
+
+**RULE: Always try the FASTEST tool first. Only escalate if it fails or task is complex.**
 
 **BEFORE answering ANY Pollinations question - USE TOOLS FIRST:**
 1. `web_scrape` on `gen.pollinations.ai/text/models` - text model IDs + descriptions

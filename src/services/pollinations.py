@@ -876,3 +876,61 @@ async def web_search_handler(query: str, mode: str = "fast", **kwargs) -> dict:
     except Exception as e:
         logger.error(f"Web search error: {e}")
         return {"error": f"Search failed: {str(e)}"}
+
+
+async def web_handler(query: str, **kwargs) -> dict:
+    """
+    Handle web tool calls using nomnom model for deep research.
+    
+    nomnom combines search, scrape, crawl, and code execution for complex tasks.
+    Use sparingly - it's powerful but slower and more expensive than simple tools.
+    
+    Args:
+        query: Natural language request describing what to research/analyze
+        
+    Returns:
+        Dict with research results or error
+    """
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a deep research assistant with web search, scraping, crawling, and Python code execution capabilities. Provide thorough, accurate, well-sourced answers. Use code for data analysis when helpful.",
+        },
+        {"role": "user", "content": query},
+    ]
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config.pollinations_token}",
+    }
+
+    payload = {
+        "model": "nomnom",
+        "messages": messages,
+    }
+
+    try:
+        session = await pollinations_client.get_session()
+        url = f"{POLLINATIONS_API_BASE}/v1/chat/completions"
+
+        # nomnom can take longer for complex research
+        async with session.post(
+            url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                content = data["choices"][0]["message"].get("content", "")
+                return {"result": content, "model": "nomnom", "query": query}
+            else:
+                error_text = await response.text()
+                logger.error(
+                    f"Web (nomnom) API error: {response.status} - {error_text[:200]}"
+                )
+                return {"error": f"Research failed: HTTP {response.status}"}
+
+    except asyncio.TimeoutError:
+        logger.error("Web (nomnom) timeout")
+        return {"error": "Research timed out. Try a simpler query or use web_search instead."}
+    except Exception as e:
+        logger.error(f"Web (nomnom) error: {e}")
+        return {"error": f"Research failed: {str(e)}"}
