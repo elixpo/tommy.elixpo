@@ -1,0 +1,1 @@
+libatk1.0-0t64 libnss3 libnspr4 libdbus-1-3 libfontconfig1 libxrender1 libx11-6 libxext6 libxrandr2 libgbm1 libasound2t64 libcups2

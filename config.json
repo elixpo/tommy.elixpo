@@ -8,7 +8,7 @@
   },
   "github": {
     "bot_username": "polly-bot-pollinations-ai",
-    "admin_users": ["voodoohop", "Itachi-1824", "eulervoid", "ElliotEtag"],
+    "admin_users": ["voodoohop", "Itachi-1824", "eulervoid", "ElliotEtag", "Circuit-Overtime"],
     "whitelisted_repos": ["pollinations/pollinations"],
     "admin_only_mentions": true
   },
