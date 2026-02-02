@@ -22,7 +22,7 @@
   },
   "features": {
     "sandbox_enabled": true,
-    "local_embeddings_enabled": true,
+    "local_embeddings_enabled": false,
     "embeddings_repo": "pollinations/pollinations"
   }
 }
