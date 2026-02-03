@@ -52,7 +52,7 @@ app = FastAPI(title="Polly API", description="OpenAI-compatible API for Polly bo
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
+        "http://localhost:*",
         "https://gsoc.pollinations.ai",
     ],
     allow_credentials=True,
