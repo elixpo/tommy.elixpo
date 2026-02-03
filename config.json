@@ -17,7 +17,7 @@
     "enabled": true
   },
   "ai": {
-    "model": "kimi-k2-thinking",
+    "model": "kimi",
     "fallback_model": "openai"
   },
   "features": {
