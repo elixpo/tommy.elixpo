@@ -17,7 +17,7 @@
     "enabled": true
   },
   "ai": {
-    "model": "gemini-large",
+    "model": "kimi-k2-thinking",
     "fallback_model": "openai"
   },
   "features": {
