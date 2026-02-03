@@ -317,7 +317,7 @@ class PollinationsClient:
         from ..constants import get_tools_with_embeddings
 
         all_tools = get_tools_with_embeddings(
-            GITHUB_TOOLS.copy(), config.local_embeddings_enabled
+            GITHUB_TOOLS.copy(), config.local_embeddings_enabled, config.doc_embeddings_enabled
         )
 
         # SECURITY: Filter admin actions from tool descriptions for non-admin users

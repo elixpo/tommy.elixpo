@@ -23,6 +23,12 @@
   "features": {
     "sandbox_enabled": true,
     "local_embeddings_enabled": true,
-    "embeddings_repo": "pollinations/pollinations"
+    "embeddings_repo": "pollinations/pollinations",
+    "doc_embeddings_enabled": true,
+    "doc_sites": [
+      "https://enter.pollinations.ai",
+      "https://kpi.myceli.ai",
+      "https://gsoc.pollinations.ai"
+    ]
   }
 }

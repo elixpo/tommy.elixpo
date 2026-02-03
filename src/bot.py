@@ -326,6 +326,42 @@ async def _code_search_handler(query: str, top_k: int = 10, **kwargs) -> dict:
         return {"error": str(e)}
 
 
+async def _doc_search_handler(query: str, top_k: int = 5, **kwargs) -> dict:
+    """Handler for doc_search tool - semantic search across documentation sites."""
+    from .services.doc_embeddings import search_docs, get_doc_stats
+
+    # Validate top_k
+    top_k = min(max(1, top_k), 10)
+
+    try:
+        results = await search_docs(query, top_k=top_k)
+
+        if not results:
+            stats = get_doc_stats()
+            return {
+                "results": [],
+                "message": f"No matching documentation found. Index contains {stats['total_chunks']} chunks.",
+            }
+
+        return {
+            "results": [
+                {
+                    "title": r["page_title"],
+                    "section": r.get("section", ""),
+                    "url": r["url"],
+                    "site": r.get("site", ""),
+                    "similarity": r["similarity"],
+                    "excerpt": r["content"][:500] + ("..." if len(r["content"]) > 500 else ""),
+                }
+                for r in results
+            ],
+            "message": f"Found {len(results)} relevant documentation sections",
+        }
+    except Exception as e:
+        logger.error(f"Documentation search failed: {e}")
+        return {"error": str(e)}
+
+
 async def fetch_thread_history(
     thread: discord.Thread, limit: int = THREAD_HISTORY_LIMIT
 ) -> list[dict]:
@@ -599,6 +635,15 @@ class PollyBot(commands.Bot):
             )
             logger.info("Registered code_search tool handler (embeddings enabled)")
 
+        # Register doc_search handler if doc embeddings enabled
+        if config.doc_embeddings_enabled:
+            from .services.doc_embeddings import search_docs
+
+            pollinations_client.register_tool_handler(
+                "doc_search", _doc_search_handler
+            )
+            logger.info("Registered doc_search tool handler (doc embeddings enabled)")
+
         # Register web_search handler (always available)
         from .services.pollinations import web_search_handler, web_handler
 
@@ -632,12 +677,16 @@ class PollyBot(commands.Bot):
 
         self.cleanup_sessions.start()
         self.check_stale_terminals.start()
+        if config.doc_embeddings_enabled:
+            self.update_doc_embeddings.start()
         logger.info("Bot setup complete")
 
     async def close(self):
         """Clean up resources when bot shuts down."""
         self.cleanup_sessions.cancel()
         self.check_stale_terminals.cancel()
+        if config.doc_embeddings_enabled:
+            self.update_doc_embeddings.cancel()
         if self.issue_notifier:
             await self.issue_notifier.stop()
         if self.webhook_server:
@@ -657,6 +706,11 @@ class PollyBot(commands.Bot):
             from .services.embeddings import close as close_embeddings
 
             await close_embeddings()
+        # Clean up doc embeddings if enabled
+        if config.doc_embeddings_enabled:
+            from .services.doc_embeddings import close as close_doc_embeddings
+
+            await close_doc_embeddings()
         await super().close()
 
     @tasks.loop(minutes=1)
@@ -690,6 +744,30 @@ class PollyBot(commands.Bot):
     @check_stale_terminals.before_loop
     async def before_stale_check(self):
         """Wait until the bot is ready before starting terminal cleanup task."""
+        await self.wait_until_ready()
+
+    @tasks.loop(hours=6)
+    async def update_doc_embeddings(self):
+        """
+        Periodically update documentation embeddings.
+
+        Runs every 6 hours to keep documentation fresh for GSoC support.
+        """
+        if not config.doc_embeddings_enabled:
+            return
+
+        try:
+            from .services.doc_embeddings import update_all_sites
+
+            logger.info("Starting scheduled documentation update...")
+            await update_all_sites()
+            logger.info("Documentation update complete")
+        except Exception as e:
+            logger.error(f"Documentation update failed: {e}", exc_info=True)
+
+    @update_doc_embeddings.before_loop
+    async def before_doc_update(self):
+        """Wait until the bot is ready before starting doc update task."""
         await self.wait_until_ready()
 
 
@@ -782,6 +860,13 @@ async def on_ready():
 
         asyncio.create_task(init_embeddings())
         logger.info("Local embeddings initialization started")
+
+    # Initialize doc embeddings if enabled (runs in background)
+    if config.doc_embeddings_enabled:
+        from .services.doc_embeddings import initialize as init_doc_embeddings
+
+        asyncio.create_task(init_doc_embeddings())
+        logger.info("Documentation embeddings initialization started")
 
 
 async def _check_reply_to_bot(
@@ -880,6 +965,12 @@ async def on_message(message: discord.Message):
             )
 
         await handle_thread_message(message, session)
+        return
+
+    # Check for casual "polly" mention (case-insensitive, anywhere in message)
+    # This triggers inline reply WITHOUT creating a thread
+    if "polly" in message.content.lower():
+        await handle_inline_polly_mention(message)
         return
 
     # Respond if @mentioned OR if replying to bot's message
@@ -1087,6 +1178,106 @@ async def start_conversation(
             video_urls=video_urls,
             file_urls=file_urls,
         )
+
+
+async def handle_inline_polly_mention(message: discord.Message):
+    """
+    Handle casual "polly" mention - inline reply without thread.
+
+    Stateless, lightweight response with recent channel history for context.
+    No session created - each mention is independent.
+    """
+    # Extract text and media
+    text = message.content.strip()
+    image_urls, video_urls, file_urls = extract_media_urls(message)
+
+    if not text and (image_urls or video_urls or file_urls):
+        text = "[User mentioned polly with media/files]"
+
+    # Fetch recent channel history for context (last 50 messages)
+    channel_history = []
+    try:
+        async for msg in message.channel.history(limit=51):  # +1 to skip current
+            if msg.id == message.id:
+                continue  # Skip current message
+
+            if msg.author.bot:
+                # Bot message
+                channel_history.append({"role": "assistant", "content": msg.content})
+            else:
+                # User message
+                channel_history.append({
+                    "role": "user",
+                    "content": f"[{msg.author.name}]: {msg.content}"
+                })
+
+        # Reverse to chronological order (oldest to newest)
+        channel_history.reverse()
+    except Exception as e:
+        logger.warning(f"Failed to fetch channel history for inline mention: {e}")
+
+    # Check if user is admin
+    user_is_admin = is_admin(message.author)
+
+    # Build tool context (same structure as normal processing)
+    tool_context = {
+        "is_admin": user_is_admin,
+        "user_id": message.author.id,
+        "user_name": str(message.author),
+        "reporter": str(message.author),
+        "channel_id": message.channel.id,
+        "thread_id": None,  # No thread for inline mentions
+        "guild_id": message.guild.id if message.guild else None,
+        "user_role_ids": (
+            [r.id for r in message.author.roles] if isinstance(message.author, discord.Member) else []
+        ),
+        "message_url": message.jump_url,
+        "discord_channel": message.channel,
+        "discord_thread_id": None,
+        "discord_bot": bot,
+        "discord_guild": message.guild if hasattr(message, "guild") else None,
+    }
+
+    async with message.channel.typing():
+        try:
+            # Process with tools but no session
+            result = await pollinations_client.process_with_tools(
+                user_message=text,
+                discord_username=str(message.author),
+                thread_history=channel_history,
+                image_urls=image_urls,
+                video_urls=video_urls or [],
+                file_urls=file_urls or [],
+                is_admin=user_is_admin,
+                tool_context=tool_context,
+            )
+
+            response_text = result.get("response", "")
+            content_blocks = result.get("content_blocks", [])
+
+            # Decode any base64 images
+            image_files = decode_base64_images(content_blocks, max_images=10)
+            if image_files:
+                # Strip file paths from response
+                response_text = re.sub(r'\[([^\]]*)\]\(file:///[^)]+\)\n?', '', response_text)
+                response_text = re.sub(r'file:///[^\s\)]+', '', response_text)
+                response_text = response_text.strip()
+
+            # Fix double-wrapped URLs
+            response_text = re.sub(r'\[(https?://[^\]]+)\]\(<\1>\)', r'<\1>', response_text)
+
+            if response_text or image_files:
+                # Reply to the message WITHOUT ping (mention_author=False)
+                await send_long_message(
+                    channel=message.channel,
+                    text=response_text or "Here's the result:",
+                    reply_to=message,
+                    files=image_files,
+                    mention_author=False,
+                )
+        except Exception as e:
+            logger.error(f"Error processing inline polly mention: {e}")
+            await message.reply("Sorry, I encountered an error processing your request.", mention_author=False)
 
 
 async def handle_thread_message(message: discord.Message, session: ConversationSession):
@@ -1315,6 +1506,7 @@ async def send_long_message(
     max_length: int = 2000,
     reply_to: Optional[discord.Message] = None,
     files: Optional[list[discord.File]] = None,
+    mention_author: bool = True,
 ):
     """
     Send a message, splitting if too long. First chunk replies to message if provided.
@@ -1325,6 +1517,7 @@ async def send_long_message(
         max_length: Max characters per message (Discord limit 2000)
         reply_to: Optional message to reply to (only for first chunk)
         files: Optional list of discord.File to attach (only to first message, max 10)
+        mention_author: Whether to ping the author when replying (default True)
     """
     # Files only go with the first message - Discord max 10 files
     files_to_send = files[:10] if files else []
@@ -1332,9 +1525,9 @@ async def send_long_message(
     if len(text) <= max_length:
         if reply_to:
             if files_to_send:
-                await reply_to.reply(text, files=files_to_send)
+                await reply_to.reply(text, files=files_to_send, mention_author=mention_author)
             else:
-                await reply_to.reply(text)
+                await reply_to.reply(text, mention_author=mention_author)
         else:
             if files_to_send:
                 await channel.send(text, files=files_to_send)
@@ -1362,9 +1555,9 @@ async def send_long_message(
             # Reply to user's message for first chunk only, with files
             if i == 0 and reply_to:
                 if files_to_send:
-                    await reply_to.reply(chunk, files=files_to_send)
+                    await reply_to.reply(chunk, files=files_to_send, mention_author=mention_author)
                 else:
-                    await reply_to.reply(chunk)
+                    await reply_to.reply(chunk, mention_author=mention_author)
             elif i == 0:
                 if files_to_send:
                     await channel.send(chunk, files=files_to_send)

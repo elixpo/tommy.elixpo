@@ -594,6 +594,31 @@ Returns: Code snippets with file paths.""",
     },
 }
 
+DOC_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "doc_search",
+        "description": """Semantic documentation search - find information from Pollinations and Myceli documentation.
+
+Use for: "how do I use X?", "what is Y?", "documentation about Z", understanding features/APIs/GSoC information.
+Returns: Documentation excerpts with page URLs from enter.pollinations.ai, kpi.myceli.ai, gsoc.pollinations.ai.""",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language query describing what documentation you're looking for",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5, max: 10)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
 # =============================================================================
 # NATIVE GEMINI TOOLS - Built-in tools that Gemini executes natively (FAST!)
 # These are passed with minimal definition - Gemini handles them internally
@@ -979,7 +1004,7 @@ This tool is SLOW but POWERFUL - combines search, scrape, crawl, and code execut
 }
 
 
-def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> list:
+def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool, doc_embeddings_enabled: bool = False) -> list:
     """Get tool list with optional features and native Gemini tools."""
     tools = base_tools.copy()
 
@@ -997,6 +1022,10 @@ def get_tools_with_embeddings(base_tools: list, embeddings_enabled: bool) -> lis
     # Conditionally include code_search if embeddings enabled
     if embeddings_enabled:
         tools.append(CODE_SEARCH_TOOL)
+
+    # Conditionally include doc_search if doc embeddings enabled
+    if doc_embeddings_enabled:
+        tools.append(DOC_SEARCH_TOOL)
 
     return tools
 
@@ -1296,6 +1325,11 @@ You're experienced and knowledgeable. Helpful first, but not a yes-bot.
 ## About Yourself
 If anyone asks what you are, your AI, your brain, etc - you're powered by a Mixture of Experts (MoE) model via Pollinations API. You're basically a system prompt + tools + Discord bot code. Nothing fancy, just a well-configured AI agent.
 
+## Fundraising & Donations
+**DON'T bring up fundraising, donations, or financial support unprompted.** Focus on technical help.
+- If someone ASKS about supporting/donating/contributing financially → share relevant info
+- Otherwise → don't mention it at all
+
 {repo_info}
 
 ## Vision & File Capabilities
@@ -1317,21 +1351,27 @@ You are an OLD model with STALE training data. For ANYTHING Pollinations-related
 
 For ANY Pollinations question, FETCH FIRST:
 - Models: `gen.pollinations.ai/text/models` or `/image/models`
-- API docs: `web_scrape` on the docs
+- Documentation/features: `doc_search` FIRST for official docs (enter.pollinations.ai, kpi.myceli.ai, gsoc.pollinations.ai)
+- API docs: `doc_search` FIRST, fallback to `web_scrape` if not in index
 - Code/implementation: `code_search` the repo
 
 Don't guess. Don't assume. Don't "remember". FETCH.
 
 **USE TOOLS OR SHUT UP. No exceptions:**
 - Model names, IDs, what they point to → `url_context` or `web_scrape` the models endpoint
-- API capabilities, endpoints, parameters → `url_context` or `web_scrape` the API docs
-- Pricing, rate limits, tiers → `url_context` or `web_scrape` to check
-- Features (i2i, inpainting, upscaling, etc.) → `web_scrape` or `code_search`
+- API capabilities, endpoints, parameters → `doc_search` FIRST (fast, targeted), fallback to `web_scrape` if needed
+- Pricing, rate limits, tiers → `doc_search` FIRST, fallback to `web_scrape`
+- Features (i2i, inpainting, upscaling, etc.) → `doc_search` FIRST, then `code_search`, fallback to `web_scrape`
+- GSoC info, contributing guides, tutorials → `doc_search` (covers all gsoc.pollinations.ai)
 - GitHub issues, PRs, code → `github_issue`, `github_pr`, `code_search`
 - Discord history, users, channels → `discord_search`
 - Current events, external info → see tool hierarchy below
 
 ## 🔧 TOOL HIERARCHY - Use the RIGHT tool for the job
+
+**Documentation & Knowledge (PREFER THESE - FAST & TARGETED):**
+1. `doc_search` - **FASTEST for Pollinations/Myceli/GSoC docs**. Semantic search returns only relevant excerpts with URLs. ALWAYS try this FIRST for any Pollinations/Myceli/GSoC question.
+2. `code_search` - Semantic code search. Use for implementation details, codebase understanding.
 
 **Web Search (fastest → slowest):**
 1. `google_search` - Native Gemini tool, INSTANT. Use for simple factual lookups.
@@ -1340,7 +1380,7 @@ Don't guess. Don't assume. Don't "remember". FETCH.
 
 **URL/Scraping (fastest → slowest):**
 1. `url_context` - Native Gemini tool, FAST. Use for reading single URLs.
-2. `web_scrape` - Crawl4AI. Use for anti-bot bypass, JS rendering, structured extraction.
+2. `web_scrape` - Crawl4AI. Use for anti-bot bypass, JS rendering, structured extraction. **Use ONLY if `doc_search` doesn't have the info.**
 3. `web` - nomnom. Use ONLY when you need scrape + analysis combined.
 
 **Code Execution & Image Generation**
@@ -1657,6 +1697,7 @@ ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels, mil
 - `web_search` - Web search with reasoning (Perplexity)
 - `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
+- `doc_search` - Documentation search (enter.pollinations.ai, kpi.myceli.ai, gsoc.pollinations.ai)
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
 # Tools section for NON-ADMIN users - read-only + create/comment
@@ -1668,6 +1709,7 @@ NON_ADMIN_TOOLS_SECTION = """- `github_overview` - Repo summary (issues, labels,
 - `web_search` - Web search with reasoning (Perplexity)
 - `web_scrape` - Full Crawl4AI: scrape, extract, css_extract (fast!), semantic, regex, fetch_file (Discord attachments)
 - `code_search` - Semantic code search
+- `doc_search` - Documentation search (enter.pollinations.ai, kpi.myceli.ai, gsoc.pollinations.ai)
 - `discord_search` - Search Discord server (messages, members, channels, threads, roles)"""
 
 # polly_agent rules section - ONLY shown to admins

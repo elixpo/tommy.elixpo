@@ -99,6 +99,14 @@ class Config:
         self.local_embeddings_enabled = features_cfg.get("local_embeddings_enabled", False)
         self.embeddings_repo = features_cfg.get("embeddings_repo", "pollinations/pollinations")
 
+        # Doc embeddings (separate from code embeddings)
+        self.doc_embeddings_enabled = features_cfg.get("doc_embeddings_enabled", True)
+        self.doc_sites = features_cfg.get("doc_sites", [
+            "https://enter.pollinations.ai",
+            "https://kpi.myceli.ai",
+            "https://gsoc.pollinations.ai"
+        ])
+
     def _load_private_key(self) -> str:
         """Load GitHub App private key from env var or file path."""
         key_value = os.getenv("GITHUB_PRIVATE_KEY", "")
