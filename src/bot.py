@@ -918,9 +918,11 @@ async def on_message(message: discord.Message):
 
     # Check reply status ONCE (reuse result throughout)
     is_reply_to_bot, ref_msg = await _check_reply_to_bot(message)
+    logger.info(f"MSG: '{message.content[:50]}' | is_reply_to_bot={is_reply_to_bot} | has_polly={'polly' in message.content.lower()} | is_@mention={bot.user and bot.user.mentioned_in(message) if bot.user else False} | in_thread={isinstance(message.channel, discord.Thread)}")
 
     # Check if in a thread
     if isinstance(message.channel, discord.Thread):
+        logger.info(f"PATH: In thread (line 923)")
         session = session_manager.get_session(message.channel.id)
 
         # ONLY respond if: @mentioned OR replying to bot's message
@@ -978,11 +980,15 @@ async def on_message(message: discord.Message):
     # Check for casual "polly" mention OR reply to bot (case-insensitive)
     # This triggers inline reply WITHOUT creating a thread
     # Skip if we're already in a thread (handled above)
+    logger.info(f"PATH: Checking inline (line 980)")
     if not isinstance(message.channel, discord.Thread):
+        logger.info(f"PATH: Not in thread, checking inline conditions")
         if ("polly" in message.content.lower() or is_reply_to_bot) and not (bot.user and bot.user.mentioned_in(message)):
-            logger.info(f"Inline polly triggered: is_reply={is_reply_to_bot}, has_polly={'polly' in message.content.lower()}, content={message.content[:50]}")
+            logger.info(f"PATH: INLINE HANDLER CALLED (line 984)")
             await handle_inline_polly_mention(message)
             return
+        else:
+            logger.info(f"PATH: Inline conditions NOT met - polly={'polly' in message.content.lower()}, is_reply={is_reply_to_bot}, is_@={bot.user and bot.user.mentioned_in(message) if bot.user else False}")
 
     # ONLY respond if @mentioned (not just replying)
     # Thread creation is ONLY for @polly, not replies
@@ -1013,6 +1019,7 @@ async def on_message(message: discord.Message):
         text = "[User attached media/files]"
 
     # Create thread and start new conversation
+    logger.info(f"PATH: CREATING THREAD (line 1020) - This should ONLY happen for @polly!")
     await start_conversation(message, text, image_urls, video_urls, file_urls)
 
 
