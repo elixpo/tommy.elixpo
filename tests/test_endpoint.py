@@ -9,7 +9,7 @@ payload = {
     "messages": [
         {
             "role": "user",
-            "content": "what are the latest issues that we have for pollinations on github?"
+            "content": "hi"
         }
     ],
     "user_name": "http_test_user",
