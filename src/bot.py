@@ -967,15 +967,15 @@ async def on_message(message: discord.Message):
         await handle_thread_message(message, session)
         return
 
-    # Check for casual "polly" mention (case-insensitive, anywhere in message)
+    # Check for casual "polly" mention OR reply to bot (case-insensitive)
     # This triggers inline reply WITHOUT creating a thread
-    # Also catches replies to inline polly messages to keep conversation inline
-    if "polly" in message.content.lower() and not (bot.user and bot.user.mentioned_in(message)):
+    if ("polly" in message.content.lower() or is_reply_to_bot) and not (bot.user and bot.user.mentioned_in(message)):
         await handle_inline_polly_mention(message)
         return
 
-    # Respond if @mentioned OR if replying to bot's message
-    if bot.user is None or (not bot.user.mentioned_in(message) and not is_reply_to_bot):
+    # ONLY respond if @mentioned (not just replying)
+    # Thread creation is ONLY for @polly, not replies
+    if bot.user is None or not bot.user.mentioned_in(message):
         return
 
     if message.mention_everyone:
@@ -1246,14 +1246,11 @@ async def handle_inline_polly_mention(message: discord.Message):
             inline_system_prompt = {
                 "role": "system",
                 "content": (
-                    "You are Polly responding to a quick inline mention. "
-                    "You can see recent chat for CONTEXT, but ONLY reply to THIS message. "
-                    "Be EXTREMELY CONCISE and CASUAL (1-2 sentences MAX). "
-                    "Talk like a human in chat - natural, friendly, quick. "
-                    "Emojis are fine, but keep it SHORT and to the point. "
-                    "NO: Long explanations, bullet points, or structured responses. "
-                    "YES: Quick, direct answer like texting a friend. "
-                    "For detailed help, they should use @polly."
+                    "You are Polly responding inline. Be SUPER SHORT (max 15-20 words). "
+                    "Answer like texting - casual, direct, no fluff. "
+                    "Example: 'Doc search is empty, might be rebuilding. Want me to scrape the site?' "
+                    "NOT: Multiple sentences with emojis explaining everything. "
+                    "For details, say '@polly for more'."
                 )
             }
 
