@@ -980,9 +980,9 @@ async def on_message(message: discord.Message):
     # Check for casual "polly" mention OR reply to bot (case-insensitive)
     # This triggers inline reply WITHOUT creating a thread
     # Skip if we're already in a thread (handled above)
-    # TEMPORARILY DISABLED - debugging thread creation issues
-    logger.info(f"PATH: Inline handler DISABLED (line 980)")
-    if False:  # DISABLED
+    # DISABLED - inline polly feature disabled per user request
+    logger.info(f"PATH: Inline handler DISABLED")
+    if False:  # DISABLED - inline polly feature turned off
         logger.info(f"PATH: Not in thread, checking inline conditions")
         if ("polly" in message.content.lower() or is_reply_to_bot) and not (bot.user and bot.user.mentioned_in(message)):
             logger.info(f"PATH: INLINE HANDLER CALLED (line 984)")
