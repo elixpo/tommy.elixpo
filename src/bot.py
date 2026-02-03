@@ -980,12 +980,14 @@ async def on_message(message: discord.Message):
     # Skip if we're already in a thread (handled above)
     if not isinstance(message.channel, discord.Thread):
         if ("polly" in message.content.lower() or is_reply_to_bot) and not (bot.user and bot.user.mentioned_in(message)):
+            logger.info(f"Inline polly triggered: is_reply={is_reply_to_bot}, has_polly={'polly' in message.content.lower()}, content={message.content[:50]}")
             await handle_inline_polly_mention(message)
             return
 
     # ONLY respond if @mentioned (not just replying)
     # Thread creation is ONLY for @polly, not replies
     if bot.user is None or not bot.user.mentioned_in(message):
+        logger.info(f"Ignoring message (not @mentioned): {message.content[:50]}")
         return
 
     if message.mention_everyone:
