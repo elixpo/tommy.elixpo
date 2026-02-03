@@ -75,6 +75,32 @@ async def chat_completions(request: ChatRequest) -> ChatResponse:
     
     user_message = request.messages[-1].content if request.messages else ""
     
+    http_restriction = """
+
+## ⚠️ HTTP API MODE - LIMITED TOOLS ONLY
+You are running in HTTP API mode. You have LIMITED tool access:
+
+**ALLOWED TOOLS:**
+- github_overview: Search GitHub repository overview
+- google_search: Search the web via Google
+- web_search: Search and fetch web results
+- url_context: Get content from URLs
+- web: Deep web research
+
+**RESTRICTED (Discord-only):**
+- Issue creation/management
+- Code execution/sandbox
+- GitHub PR operations
+- Polly agent tasks
+- Discord search
+
+If user requests restricted operations, politely explain they need to use the Discord bot directly."""
+    
+    if thread_history:
+        thread_history.insert(0, {"role": "system", "content": http_restriction})
+    else:
+        thread_history = [{"role": "system", "content": http_restriction}]
+    
     try:
         result = await pollinations_client.process_with_tools(
             user_message=user_message,
@@ -87,7 +113,8 @@ async def chat_completions(request: ChatRequest) -> ChatResponse:
             tool_context={
                 "is_admin": request.is_admin or False,
                 "user_name": request.user_name,
-            }
+                "is_http_api": True,
+            },
         )
         
         return ChatResponse(
