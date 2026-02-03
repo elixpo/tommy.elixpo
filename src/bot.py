@@ -933,6 +933,14 @@ async def on_message(message: discord.Message):
             # In thread but not mentioned and not replying to bot - ignore
             return
 
+        # Check if this is an auto-created thread from inline reply (no session exists)
+        # If so, treat it as inline and don't persist the thread
+        if not session and is_reply_to_bot and not bot.user.mentioned_in(message):
+            # This is a reply to inline polly in an auto-created thread
+            # Respond inline-style without creating session
+            await handle_inline_polly_mention(message)
+            return
+
         # Extract text
         text = message.content
         for mention in message.mentions:
