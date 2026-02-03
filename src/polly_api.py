@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-
 import logging
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from contextlib import asynccontextmanager
@@ -49,6 +48,17 @@ async def lifespan(app: FastAPI):
     await pollinations_client.close()
 
 app = FastAPI(title="Polly API", description="OpenAI-compatible API for Polly bot", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://gsoc.pollinations.ai",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Message(BaseModel):
     role: str
