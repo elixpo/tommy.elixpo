@@ -967,6 +967,12 @@ async def on_message(message: discord.Message):
         await handle_thread_message(message, session)
         return
 
+    # Check for casual "polly" mention (case-insensitive, anywhere in message)
+    # This triggers inline reply WITHOUT creating a thread
+    if "polly" in message.content.lower():
+        await handle_inline_polly_mention(message)
+        return
+
     # Respond if @mentioned OR if replying to bot's message
     if bot.user is None or (not bot.user.mentioned_in(message) and not is_reply_to_bot):
         return
@@ -1172,6 +1178,106 @@ async def start_conversation(
             video_urls=video_urls,
             file_urls=file_urls,
         )
+
+
+async def handle_inline_polly_mention(message: discord.Message):
+    """
+    Handle casual "polly" mention - inline reply without thread.
+
+    Stateless, lightweight response with recent channel history for context.
+    No session created - each mention is independent.
+    """
+    # Extract text and media
+    text = message.content.strip()
+    image_urls, video_urls, file_urls = extract_media_urls(message)
+
+    if not text and (image_urls or video_urls or file_urls):
+        text = "[User mentioned polly with media/files]"
+
+    # Fetch recent channel history for context (last 50 messages)
+    channel_history = []
+    try:
+        async for msg in message.channel.history(limit=51):  # +1 to skip current
+            if msg.id == message.id:
+                continue  # Skip current message
+
+            if msg.author.bot:
+                # Bot message
+                channel_history.append({"role": "assistant", "content": msg.content})
+            else:
+                # User message
+                channel_history.append({
+                    "role": "user",
+                    "content": f"[{msg.author.name}]: {msg.content}"
+                })
+
+        # Reverse to chronological order (oldest to newest)
+        channel_history.reverse()
+    except Exception as e:
+        logger.warning(f"Failed to fetch channel history for inline mention: {e}")
+
+    # Check if user is admin
+    user_is_admin = is_admin(message.author)
+
+    # Build tool context (same structure as normal processing)
+    tool_context = {
+        "is_admin": user_is_admin,
+        "user_id": message.author.id,
+        "user_name": str(message.author),
+        "reporter": str(message.author),
+        "channel_id": message.channel.id,
+        "thread_id": None,  # No thread for inline mentions
+        "guild_id": message.guild.id if message.guild else None,
+        "user_role_ids": (
+            [r.id for r in message.author.roles] if isinstance(message.author, discord.Member) else []
+        ),
+        "message_url": message.jump_url,
+        "discord_channel": message.channel,
+        "discord_thread_id": None,
+        "discord_bot": bot,
+        "discord_guild": message.guild if hasattr(message, "guild") else None,
+    }
+
+    async with message.channel.typing():
+        try:
+            # Process with tools but no session
+            result = await pollinations_client.process_with_tools(
+                user_message=text,
+                discord_username=str(message.author),
+                thread_history=channel_history,
+                image_urls=image_urls,
+                video_urls=video_urls or [],
+                file_urls=file_urls or [],
+                is_admin=user_is_admin,
+                tool_context=tool_context,
+            )
+
+            response_text = result.get("response", "")
+            content_blocks = result.get("content_blocks", [])
+
+            # Decode any base64 images
+            image_files = decode_base64_images(content_blocks, max_images=10)
+            if image_files:
+                # Strip file paths from response
+                response_text = re.sub(r'\[([^\]]*)\]\(file:///[^)]+\)\n?', '', response_text)
+                response_text = re.sub(r'file:///[^\s\)]+', '', response_text)
+                response_text = response_text.strip()
+
+            # Fix double-wrapped URLs
+            response_text = re.sub(r'\[(https?://[^\]]+)\]\(<\1>\)', r'<\1>', response_text)
+
+            if response_text or image_files:
+                # Reply to the message WITHOUT ping (mention_author=False)
+                await send_long_message(
+                    channel=message.channel,
+                    text=response_text or "Here's the result:",
+                    reply_to=message,
+                    files=image_files,
+                    mention_author=False,
+                )
+        except Exception as e:
+            logger.error(f"Error processing inline polly mention: {e}")
+            await message.reply("Sorry, I encountered an error processing your request.", mention_author=False)
 
 
 async def handle_thread_message(message: discord.Message, session: ConversationSession):
@@ -1400,6 +1506,7 @@ async def send_long_message(
     max_length: int = 2000,
     reply_to: Optional[discord.Message] = None,
     files: Optional[list[discord.File]] = None,
+    mention_author: bool = True,
 ):
     """
     Send a message, splitting if too long. First chunk replies to message if provided.
@@ -1410,6 +1517,7 @@ async def send_long_message(
         max_length: Max characters per message (Discord limit 2000)
         reply_to: Optional message to reply to (only for first chunk)
         files: Optional list of discord.File to attach (only to first message, max 10)
+        mention_author: Whether to ping the author when replying (default True)
     """
     # Files only go with the first message - Discord max 10 files
     files_to_send = files[:10] if files else []
@@ -1417,9 +1525,9 @@ async def send_long_message(
     if len(text) <= max_length:
         if reply_to:
             if files_to_send:
-                await reply_to.reply(text, files=files_to_send)
+                await reply_to.reply(text, files=files_to_send, mention_author=mention_author)
             else:
-                await reply_to.reply(text)
+                await reply_to.reply(text, mention_author=mention_author)
         else:
             if files_to_send:
                 await channel.send(text, files=files_to_send)
@@ -1447,9 +1555,9 @@ async def send_long_message(
             # Reply to user's message for first chunk only, with files
             if i == 0 and reply_to:
                 if files_to_send:
-                    await reply_to.reply(chunk, files=files_to_send)
+                    await reply_to.reply(chunk, files=files_to_send, mention_author=mention_author)
                 else:
-                    await reply_to.reply(chunk)
+                    await reply_to.reply(chunk, mention_author=mention_author)
             elif i == 0:
                 if files_to_send:
                     await channel.send(chunk, files=files_to_send)
