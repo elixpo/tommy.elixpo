@@ -8,11 +8,11 @@ from pydantic import BaseModel
 import uvicorn
 from contextlib import asynccontextmanager
 
-from config import config
-from services.pollinations import pollinations_client
-from logging_config import setup_logging
-from services.github import TOOL_HANDLERS
-from services.code_agent.tools import TOOL_HANDLERS as CODE_AGENT_HANDLERS
+from .config import config
+from .services.pollinations import pollinations_client
+from .logging_config import setup_logging
+from .services.github import TOOL_HANDLERS
+from .services.code_agent.tools import TOOL_HANDLERS as CODE_AGENT_HANDLERS
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,17 +26,17 @@ async def lifespan(app: FastAPI):
     handlers.update(CODE_AGENT_HANDLERS)
     
     if config.local_embeddings_enabled:
-        from src.bot import _code_search_handler
+        from .bot import _code_search_handler
         handlers["code_search"] = _code_search_handler
     
-    from src.services.pollinations import web_search_handler, web_handler
+    from .services.pollinations import web_search_handler, web_handler
     handlers["web_search"] = web_search_handler
     handlers["web"] = web_handler
     
     from src.services.web_scraper import web_scrape_handler
     handlers["web_scrape"] = web_scrape_handler
     
-    from src.services.discord_search import tool_discord_search
+    from .services.discord_search import tool_discord_search
     handlers["discord_search"] = tool_discord_search
     
     for name, handler in handlers.items():
@@ -134,4 +134,4 @@ async def health_check():
 
 if __name__ == "__main__":
     logger.info("Starting Polly API...")
-    uvicorn.run(app, host="0.0.0.0", port=8003, log_level="info")
+    uvicorn.run("src.polly_api:app", host="0.0.0.0", port=8003, log_level="info")
