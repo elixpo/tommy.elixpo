@@ -6,7 +6,6 @@ Crawl4AI v0.7.8+ features:
 - Chunking: RegexChunking, SlidingWindowChunking, TopicSegmentationChunking
 - Advanced: fit_markdown, session reuse, JS execution, screenshots, PDF export
 """
-
 import asyncio
 import logging
 import re
@@ -16,100 +15,34 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# CORE SCRAPING FUNCTION - Full Crawl4AI integration
-# =============================================================================
-
-
 async def scrape_url(
     url: str,
-    # Extraction strategy options
-    extraction_strategy: Optional[
-        str
-    ] = None,  # "llm", "css", "xpath", "cosine", "regex"
-    schema: Optional[Dict[str, Any]] = None,  # For css/xpath extraction
-    instruction: Optional[str] = None,  # For LLM extraction
-    semantic_filter: Optional[str] = None,  # For cosine clustering
-    regex_patterns: Optional[
-        List[str]
-    ] = None,  # For regex extraction: ["email", "url", "phone"]
-    # Content filter options
-    content_filter: Optional[str] = None,  # "bm25", "pruning", "llm"
-    filter_query: Optional[str] = None,  # Query for content filtering
-    # Output options
+    extraction_strategy: Optional[str] = None,
+    schema: Optional[Dict[str, Any]] = None,
+    instruction: Optional[str] = None,
+    semantic_filter: Optional[str] = None,
+    regex_patterns: Optional[List[str]] = None,
+    content_filter: Optional[str] = None,
+    filter_query: Optional[str] = None,
     include_links: bool = False,
     include_images: bool = False,
     include_raw_html: bool = False,
-    include_tables: bool = False,  # Extract tables separately
-    output_format: str = "markdown",  # "markdown", "fit_markdown", "html"
-    # Browser/crawl options
-    js_code: Optional[str] = None,  # JavaScript to execute
-    wait_for: Optional[str] = None,  # CSS selector to wait for
+    include_tables: bool = False,
+    output_format: str = "markdown",
+    js_code: Optional[str] = None,
+    wait_for: Optional[str] = None,
     screenshot: bool = False,
     pdf: bool = False,
-    # Anti-bot / stealth options
-    stealth_mode: bool = False,  # Enable stealth mode
-    simulate_user: bool = False,  # Simulate human behavior
-    magic_mode: bool = False,  # Auto anti-bot bypass
-    # Page scanning options
-    scan_full_page: bool = False,  # Scroll entire page
-    process_iframes: bool = False,  # Extract iframe content
-    remove_overlays: bool = True,  # Remove popups/modals
-    # Performance options
+    stealth_mode: bool = False,
+    simulate_user: bool = False,
+    magic_mode: bool = False,
+    scan_full_page: bool = False,
+    process_iframes: bool = False,
+    remove_overlays: bool = True,
     timeout: int = 30,
     headless: bool = True,
-    # Session reuse
     session_id: Optional[str] = None,
 ) -> dict:
-    """
-    Scrape a URL with full Crawl4AI capabilities.
-
-    Args:
-        url: The URL to scrape
-
-        # Extraction strategies (pick one or none for raw markdown):
-        extraction_strategy: Strategy type - "llm", "css", "xpath", "cosine", "regex"
-        schema: JSON schema for css/xpath extraction (baseSelector, fields, etc.)
-        instruction: Natural language instruction for LLM extraction
-        semantic_filter: Keywords for cosine similarity filtering
-        regex_patterns: List of pattern names for regex extraction
-
-        # Content filtering (pre-extraction cleanup):
-        content_filter: Filter type - "bm25", "pruning", "llm"
-        filter_query: Query string for content relevance filtering
-
-        # Output options:
-        include_links: Include extracted links
-        include_images: Include image URLs
-        include_raw_html: Include raw HTML in response
-        include_tables: Extract tables as structured data
-        output_format: "markdown" (default), "fit_markdown" (filtered), "html"
-
-        # Browser control:
-        js_code: JavaScript to execute before extraction
-        wait_for: CSS selector to wait for before extraction
-        screenshot: Capture screenshot
-        pdf: Generate PDF
-
-        # Anti-bot / Stealth:
-        stealth_mode: Enable stealth mode to avoid detection
-        simulate_user: Simulate human behavior (mouse movements, delays)
-        magic_mode: Auto anti-bot bypass (combines stealth + simulation)
-
-        # Page scanning:
-        scan_full_page: Scroll entire page to load lazy content
-        process_iframes: Extract content from iframes
-        remove_overlays: Remove popups, modals, overlays
-
-        # Performance:
-        timeout: Request timeout in seconds
-        headless: Run browser headless
-        session_id: Reuse browser session
-
-    Returns:
-        Dict with success, content, extracted data, metadata, etc.
-    """
-    # Validate URL
     try:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
@@ -124,7 +57,6 @@ async def scrape_url(
     try:
         from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
-        # Build extraction strategy
         ext_strategy = None
         if extraction_strategy:
             ext_strategy = _build_extraction_strategy(
@@ -135,7 +67,6 @@ async def scrape_url(
                 regex_patterns=regex_patterns,
             )
 
-        # Build content filter via markdown_generator (0.7.8+ API)
         from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
         md_generator = None
@@ -145,35 +76,26 @@ async def scrape_url(
             )
             md_generator = DefaultMarkdownGenerator(content_filter=cont_filter)
 
-        # Configure browser
         browser_config = BrowserConfig(
             headless=headless,
             verbose=False,
         )
 
-        # Configure crawl
         crawl_config = CrawlerRunConfig(
             word_count_threshold=10,
             excluded_tags=["nav", "footer", "aside", "script", "style", "noscript"],
             remove_overlay_elements=remove_overlays,
-            cache_mode=CacheMode.DISABLED,  # Always fresh data
-            # Extraction
+            cache_mode=CacheMode.DISABLED,
             extraction_strategy=ext_strategy,
-            # Markdown generator with content filter
             markdown_generator=md_generator,
-            # JS execution
             js_code=js_code,
             wait_for=wait_for,
-            # Screenshots/PDF
             screenshot=screenshot,
             pdf=pdf,
-            # Session
             session_id=session_id,
-            # Anti-bot / Stealth
             simulate_user=simulate_user or magic_mode,
             override_navigator=stealth_mode or magic_mode,
             magic=magic_mode,
-            # Page scanning
             scan_full_page=scan_full_page,
             process_iframes=process_iframes,
         )
@@ -190,14 +112,12 @@ async def scrape_url(
                     "error": f"Failed to fetch page: {result.error_message or 'Unknown error'}",
                 }
 
-            # Build response based on output format
             response = {
                 "success": True,
                 "url": url,
                 "title": result.metadata.get("title", "") if result.metadata else "",
             }
 
-            # Content based on format
             if output_format == "fit_markdown" and result.fit_markdown:
                 response["markdown"] = result.fit_markdown
             elif output_format == "html" and result.html:
@@ -205,11 +125,9 @@ async def scrape_url(
             else:
                 response["markdown"] = result.markdown or ""
 
-            # Raw HTML if requested
             if include_raw_html and result.html:
                 response["raw_html"] = result.html
 
-            # Extracted content from strategy
             if result.extracted_content:
                 try:
                     import json
@@ -218,7 +136,6 @@ async def scrape_url(
                 except (json.JSONDecodeError, TypeError):
                     response["extracted"] = result.extracted_content
 
-            # Include links if requested
             if include_links and result.links:
                 internal = result.links.get("internal", [])
                 external = result.links.get("external", [])
@@ -227,28 +144,23 @@ async def scrape_url(
                     "external": [l.get("href") for l in external[:30] if l.get("href")],
                 }
 
-            # Include images if requested
             if include_images and result.media:
                 images = result.media.get("images", [])
                 response["images"] = [
                     img.get("src") for img in images[:20] if img.get("src")
                 ]
 
-            # Include tables if requested
             if include_tables and hasattr(result, "media") and result.media:
                 tables = result.media.get("tables", [])
                 if tables:
                     response["tables"] = tables
 
-            # Screenshot
             if screenshot and result.screenshot:
                 response["screenshot_base64"] = result.screenshot
 
-            # PDF
             if pdf and result.pdf:
                 response["pdf_base64"] = result.pdf
 
-            # Metadata
             if result.metadata:
                 response["metadata"] = {
                     k: v
@@ -275,11 +187,6 @@ async def scrape_url(
         return {"success": False, "url": url, "error": str(e)}
 
 
-# =============================================================================
-# EXTRACTION STRATEGY BUILDERS
-# =============================================================================
-
-
 def _build_extraction_strategy(
     strategy_type: str,
     schema: Optional[Dict] = None,
@@ -287,15 +194,12 @@ def _build_extraction_strategy(
     semantic_filter: Optional[str] = None,
     regex_patterns: Optional[List[str]] = None,
 ):
-    """Build the appropriate extraction strategy."""
-
     if strategy_type == "llm":
         from crawl4ai import LLMExtractionStrategy, LLMConfig
 
-        # Use Pollinations API as LLM provider
         llm_config = LLMConfig(
-            provider="openai/gpt-4o-mini",  # Will be overridden by our custom extraction
-            api_token="dummy",  # We use our own LLM call
+            provider="openai/gpt-4o-mini",
+            api_token="dummy",
         )
 
         return LLMExtractionStrategy(
@@ -340,7 +244,6 @@ def _build_extraction_strategy(
     elif strategy_type == "regex":
         from crawl4ai import RegexExtractionStrategy
 
-        # Map pattern names to flags
         pattern_map = {
             "email": RegexExtractionStrategy.Email,
             "phone": RegexExtractionStrategy.PhoneIntl,
@@ -366,8 +269,6 @@ def _build_extraction_strategy(
 
 
 def _build_content_filter(filter_type: str, query: Optional[str] = None):
-    """Build content filter strategy."""
-
     if filter_type == "bm25":
         from crawl4ai import BM25ContentFilter
 
@@ -394,11 +295,6 @@ def _build_content_filter(filter_type: str, query: Optional[str] = None):
         raise ValueError(f"Unknown content filter: {filter_type}")
 
 
-# =============================================================================
-# MULTI-URL SCRAPING
-# =============================================================================
-
-
 async def scrape_multiple(
     urls: list[str],
     extraction_strategy: Optional[str] = None,
@@ -407,24 +303,9 @@ async def scrape_multiple(
     max_concurrent: int = 5,
     timeout: int = 30,
 ) -> dict:
-    """
-    Scrape multiple URLs concurrently.
-
-    Args:
-        urls: List of URLs to scrape (max 10)
-        extraction_strategy: Strategy to apply to all URLs
-        schema: Schema for structured extraction
-        instruction: LLM instruction
-        max_concurrent: Max concurrent requests
-        timeout: Per-URL timeout
-
-    Returns:
-        Dict with results array and success/fail counts
-    """
     if not urls:
         return {"success": False, "error": "No URLs provided", "results": []}
 
-    # Limit URLs
     urls = urls[:10]
 
     semaphore = asyncio.Semaphore(max_concurrent)
@@ -468,29 +349,12 @@ async def scrape_multiple(
     }
 
 
-# =============================================================================
-# FILE/RAW CONTENT PARSING - For Discord attachments
-# =============================================================================
-
-
 async def parse_file_content(
     content: str,
     file_type: str = "text",
     instruction: Optional[str] = None,
     extract_patterns: Optional[List[str]] = None,
 ) -> dict:
-    """
-    Parse raw file content (for Discord attachments).
-
-    Args:
-        content: The raw file content
-        file_type: Type hint - "code", "log", "json", "yaml", "text"
-        instruction: Optional LLM instruction for extraction
-        extract_patterns: Regex patterns to extract ["email", "url", etc.]
-
-    Returns:
-        Dict with parsed/extracted content
-    """
     response = {
         "success": True,
         "file_type": file_type,
@@ -498,7 +362,6 @@ async def parse_file_content(
         "content": content,
     }
 
-    # Try to detect file type from content
     if file_type == "text":
         if content.strip().startswith(("{", "[")):
             file_type = "json"
@@ -509,17 +372,15 @@ async def parse_file_content(
 
     response["detected_type"] = file_type
 
-    # JSON parsing
     if file_type == "json":
         try:
             import json
 
             response["parsed"] = json.loads(content)
-            response["content"] = None  # Don't duplicate
+            response["content"] = None
         except json.JSONDecodeError as e:
             response["parse_error"] = str(e)
 
-    # YAML parsing
     elif file_type == "yaml":
         try:
             import yaml
@@ -529,7 +390,6 @@ async def parse_file_content(
         except Exception as e:
             response["parse_error"] = str(e)
 
-    # Regex extraction
     if extract_patterns:
         try:
             from crawl4ai import RegexExtractionStrategy
@@ -556,7 +416,6 @@ async def parse_file_content(
         except ImportError:
             pass
 
-    # LLM extraction if instruction provided
     if instruction:
         try:
             extracted = await _llm_extract(content, instruction)
@@ -573,17 +432,6 @@ async def fetch_discord_attachment(
     file_type: Optional[str] = None,
     instruction: Optional[str] = None,
 ) -> dict:
-    """
-    Fetch and parse a Discord attachment URL.
-
-    Args:
-        attachment_url: Discord CDN URL
-        file_type: Optional type hint
-        instruction: Optional LLM extraction instruction
-
-    Returns:
-        Parsed file content
-    """
     import aiohttp
 
     try:
@@ -596,7 +444,6 @@ async def fetch_discord_attachment(
 
                 content = await resp.text()
 
-                # Detect file type from URL if not provided
                 if not file_type:
                     url_lower = attachment_url.lower()
                     if any(
@@ -632,13 +479,7 @@ async def fetch_discord_attachment(
         return {"success": False, "error": str(e)}
 
 
-# =============================================================================
-# LLM EXTRACTION HELPER - Uses Pollinations API
-# =============================================================================
-
-
 async def _llm_extract(content: str, instruction: str) -> Optional[str]:
-    """Use Pollinations AI to extract specific information."""
     try:
         from .pollinations import pollinations_client
 
@@ -660,94 +501,35 @@ async def _llm_extract(content: str, instruction: str) -> Optional[str]:
         return None
 
 
-# =============================================================================
-# TOOL HANDLER - Called by the AI
-# =============================================================================
-
-
 async def web_scrape_handler(
     action: str = "scrape",
     url: Optional[str] = None,
     urls: Optional[list[str]] = None,
-    # Extraction options
-    strategy: Optional[str] = None,  # "llm", "css", "xpath", "cosine", "regex"
+    strategy: Optional[str] = None,
     schema: Optional[Dict] = None,
-    extract: Optional[str] = None,  # LLM instruction
+    extract: Optional[str] = None,
     semantic_filter: Optional[str] = None,
-    patterns: Optional[List[str]] = None,  # Regex patterns
-    # Content filter
+    patterns: Optional[List[str]] = None,
     content_filter: Optional[str] = None,
     filter_query: Optional[str] = None,
-    # Output options
     include_links: bool = False,
     include_images: bool = False,
     include_tables: bool = False,
     output_format: str = "markdown",
-    # Browser options
     js_code: Optional[str] = None,
     wait_for: Optional[str] = None,
     screenshot: bool = False,
-    # Anti-bot / stealth options
     stealth_mode: bool = False,
     simulate_user: bool = False,
     magic_mode: bool = False,
-    # Page scanning options
     scan_full_page: bool = False,
     process_iframes: bool = False,
-    # Session
     session_id: Optional[str] = None,
-    # File parsing
     file_url: Optional[str] = None,
     file_content: Optional[str] = None,
     file_type: Optional[str] = None,
     **kwargs,
 ) -> dict:
-    """
-    Handle web_scrape tool calls - full Crawl4AI power.
-
-    Actions:
-    - scrape: Single URL → markdown/extracted content
-    - multi: Multiple URLs concurrently
-    - extract: Scrape + LLM extraction
-    - css_extract: Scrape + CSS schema extraction (fast, no LLM)
-    - semantic: Scrape + cosine similarity clustering
-    - regex: Scrape + pattern matching (emails, URLs, etc.)
-    - parse_file: Parse raw file content (Discord attachments)
-    - fetch_file: Fetch + parse file from URL
-
-    Args:
-        action: The operation to perform
-        url: Single URL (for scrape/extract)
-        urls: List of URLs (for multi)
-        strategy: Extraction strategy override
-        schema: CSS/XPath schema for structured extraction
-        extract: LLM extraction instruction
-        semantic_filter: Keywords for semantic filtering
-        patterns: Regex patterns ["email", "url", "phone", "all"]
-        content_filter: Pre-filter - "bm25", "pruning"
-        filter_query: Query for content filtering
-        include_links: Include page links
-        include_images: Include image URLs
-        include_tables: Extract tables as structured data
-        output_format: "markdown", "fit_markdown", "html"
-        js_code: JavaScript to run before extraction
-        wait_for: CSS selector to wait for
-        screenshot: Capture screenshot
-        stealth_mode: Enable stealth to avoid bot detection
-        simulate_user: Simulate human behavior
-        magic_mode: Auto anti-bot bypass (stealth + simulation)
-        scan_full_page: Scroll to load lazy content
-        process_iframes: Extract iframe content
-        session_id: Reuse browser session
-        file_url: Discord attachment URL to fetch
-        file_content: Raw file content to parse
-        file_type: File type hint
-
-    Returns:
-        Scraped/extracted content ready for AI consumption
-    """
-
-    # File parsing actions
     if action == "parse_file":
         if not file_content:
             return {"error": "file_content required for parse_file action"}
@@ -765,7 +547,6 @@ async def web_scrape_handler(
             attachment_url=file_url, file_type=file_type, instruction=extract
         )
 
-    # URL-based actions
     if action == "scrape":
         if not url:
             return {"error": "url parameter required for scrape action"}
@@ -886,3 +667,5 @@ async def web_scrape_handler(
                 "fetch_file - Fetch + parse URL",
             ],
         }
+
+

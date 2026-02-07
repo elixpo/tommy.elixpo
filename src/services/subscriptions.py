@@ -10,7 +10,6 @@ Smart polling to avoid GitHub API limits:
 
 Uses aiosqlite for non-blocking database operations.
 """
-
 import asyncio
 import json
 import logging
@@ -25,12 +24,10 @@ from ..config import config
 
 logger = logging.getLogger(__name__)
 
-# Database path
 DB_PATH = Path(__file__).parent.parent.parent / "data" / "subscriptions.db"
 
 
 class SubscriptionManager:
-    """Manages issue subscriptions with async SQLite storage."""
 
     def __init__(self):
         self._db_path = DB_PATH
@@ -38,7 +35,6 @@ class SubscriptionManager:
         self._initialized = False
 
     async def initialize(self):
-        """Initialize database connection and create tables."""
         if self._initialized:
             return
 
@@ -46,7 +42,6 @@ class SubscriptionManager:
 
         self._db = await aiosqlite.connect(self._db_path)
 
-        # Enable WAL mode for faster concurrent reads/writes
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA synchronous=NORMAL")
         await self._db.execute("PRAGMA cache_size=10000")
@@ -77,14 +72,12 @@ class SubscriptionManager:
         logger.info("SubscriptionManager initialized with async SQLite")
 
     async def close(self):
-        """Close database connection."""
         if self._db:
             await self._db.close()
             self._db = None
             self._initialized = False
 
     async def _ensure_initialized(self):
-        """Ensure database is initialized."""
         if not self._initialized:
             await self.initialize()
 
@@ -96,11 +89,6 @@ class SubscriptionManager:
         guild_id: Optional[int] = None,
         initial_state: Optional[dict] = None
     ) -> bool:
-        """
-        Subscribe a user to an issue.
-
-        Returns True if new subscription, False if already subscribed.
-        """
         await self._ensure_initialized()
         try:
             state = initial_state.get("state", "open") if initial_state else "open"
@@ -119,11 +107,6 @@ class SubscriptionManager:
             return False
 
     async def unsubscribe(self, user_id: int, issue_number: int) -> bool:
-        """
-        Unsubscribe a user from an issue.
-
-        Returns True if was subscribed, False if wasn't.
-        """
         await self._ensure_initialized()
         try:
             cursor = await self._db.execute("""
@@ -136,11 +119,6 @@ class SubscriptionManager:
             return False
 
     async def unsubscribe_all(self, user_id: int) -> int:
-        """
-        Unsubscribe a user from all issues.
-
-        Returns number of subscriptions removed.
-        """
         await self._ensure_initialized()
         try:
             cursor = await self._db.execute("""
@@ -153,7 +131,6 @@ class SubscriptionManager:
             return 0
 
     async def get_user_subscriptions(self, user_id: int) -> list[dict]:
-        """Get all subscriptions for a user."""
         await self._ensure_initialized()
         try:
             self._db.row_factory = aiosqlite.Row
@@ -169,7 +146,6 @@ class SubscriptionManager:
             return []
 
     async def get_all_subscribed_issues(self) -> list[int]:
-        """Get all unique issue numbers with active subscriptions."""
         await self._ensure_initialized()
         try:
             cursor = await self._db.execute("""
@@ -182,7 +158,6 @@ class SubscriptionManager:
             return []
 
     async def get_subscriptions_for_issue(self, issue_number: int) -> list[dict]:
-        """Get all subscriptions for a specific issue."""
         await self._ensure_initialized()
         try:
             self._db.row_factory = aiosqlite.Row
@@ -203,7 +178,6 @@ class SubscriptionManager:
         comment_count: int,
         labels: list[str]
     ):
-        """Update the tracked state for all subscriptions of an issue."""
         await self._ensure_initialized()
         try:
             await self._db.execute("""
@@ -216,7 +190,6 @@ class SubscriptionManager:
             logger.error(f"Failed to update issue state: {e}")
 
     async def get_subscription_count(self) -> int:
-        """Get total number of active subscriptions."""
         await self._ensure_initialized()
         try:
             cursor = await self._db.execute("SELECT COUNT(*) FROM subscriptions")
@@ -227,7 +200,6 @@ class SubscriptionManager:
             return 0
 
     async def is_subscribed(self, user_id: int, issue_number: int) -> bool:
-        """Check if a user is subscribed to an issue."""
         await self._ensure_initialized()
         try:
             cursor = await self._db.execute("""
@@ -241,7 +213,6 @@ class SubscriptionManager:
 
 
 class IssueNotifier:
-    """Background task that polls for issue updates and notifies subscribers."""
 
     def __init__(self, bot: discord.Client, subscription_manager: SubscriptionManager):
         self.bot = bot
@@ -250,17 +221,14 @@ class IssueNotifier:
         self._task: Optional[asyncio.Task] = None
 
     async def start(self):
-        """Start the background polling task."""
         if self._running:
             return
-        # Initialize the subscription manager
         await self.subscriptions.initialize()
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
         logger.info("Issue notifier started")
 
     async def stop(self):
-        """Stop the background polling task."""
         self._running = False
         if self._task:
             self._task.cancel()
@@ -268,44 +236,33 @@ class IssueNotifier:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        # Close the subscription manager
         await self.subscriptions.close()
         logger.info("Issue notifier stopped")
 
     async def _poll_loop(self):
-        """Main polling loop - checks for updates every 2 minutes."""
-        # Import here to avoid circular imports
         from .github_graphql import github_graphql
 
         while self._running:
             try:
-                # Get all issues we need to check
                 issue_numbers = await self.subscriptions.get_all_subscribed_issues()
 
                 if not issue_numbers:
-                    # No subscriptions, sleep longer
                     await asyncio.sleep(60)
                     continue
 
                 logger.debug(f"Checking {len(issue_numbers)} subscribed issues")
 
-                # Batch fetch all issues in ONE GraphQL query (saves API calls!)
-                # Returns dict {issue_number: issue_data} or {"error": "..."}
                 issues_dict = await github_graphql.get_issues_batch(issue_numbers)
 
-                # Skip if error returned (could be non-existent issue)
                 if isinstance(issues_dict, dict) and "error" in issues_dict:
                     error_msg = issues_dict['error']
                     logger.warning(f"Failed to fetch issues: {error_msg}")
 
-                    # If specific issue doesn't exist, try to identify and remove it
                     if "Could not resolve to an Issue" in error_msg:
-                        # Try fetching issues one by one to find the bad one
                         for issue_num in issue_numbers:
                             single_result = await github_graphql.get_issues_batch([issue_num])
                             if isinstance(single_result, dict) and "error" in single_result:
                                 logger.warning(f"Issue #{issue_num} doesn't exist - removing all subscriptions")
-                                # Get all subscribers and unsubscribe them
                                 subs = await self.subscriptions.get_subscriptions_for_issue(issue_num)
                                 for sub in subs:
                                     await self.subscriptions.unsubscribe(sub['user_id'], issue_num)
@@ -314,22 +271,18 @@ class IssueNotifier:
                     await asyncio.sleep(60)
                     continue
 
-                # Check each issue for changes
                 for issue_number, issue in issues_dict.items():
                     await self._check_issue_for_changes(issue)
 
-                # Poll every 2 minutes (30 req/hour per subscribed issue set)
-                # With 5000 req/hour limit, we're very safe
                 await asyncio.sleep(120)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in poll loop: {e}")
-                await asyncio.sleep(60)  # Back off on errors
+                await asyncio.sleep(60)
 
     async def _check_issue_for_changes(self, issue: dict):
-        """Check if an issue has changes and notify subscribers."""
         from .github_graphql import github_graphql
 
         issue_number = issue["number"]
@@ -342,7 +295,6 @@ class IssueNotifier:
         current_comments = issue.get("comments_count", 0)
         current_labels = issue.get("labels", [])
 
-        # Track if we need to fetch detailed info
         needs_comments = False
         max_new_comments = 0
 
@@ -352,32 +304,27 @@ class IssueNotifier:
                 needs_comments = True
                 max_new_comments = max(max_new_comments, current_comments - last_comments)
 
-        # Fetch full issue with comments if there are new ones
         new_comments_data = []
         if needs_comments:
             full_issue = await github_graphql.get_issue_full(
                 issue_number=issue_number,
-                comments_count=min(max_new_comments + 1, 5)  # Fetch recent comments
+                comments_count=min(max_new_comments + 1, 5)
             )
             if full_issue and "comments" in full_issue:
                 new_comments_data = full_issue["comments"]
 
         for sub in subscriptions:
-            # Build structured changes list for AI formatting
             changes = []
 
-            # Check for state change
             if sub["last_state"] != current_state:
                 if current_state == "closed":
                     changes.append({"type": "closed", "data": {}})
                 else:
                     changes.append({"type": "reopened", "data": {}})
 
-            # Check for new comments - include actual content for AI to summarize
             last_comments = sub.get("last_comment_count", 0)
             if current_comments > last_comments:
                 new_count = current_comments - last_comments
-                # Get the new comments (last N based on how many are new)
                 recent_comments = new_comments_data[-new_count:] if new_comments_data else []
 
                 for comment in recent_comments:
@@ -388,14 +335,12 @@ class IssueNotifier:
                         "data": {"author": author, "body": body}
                     })
 
-                # Fallback if we couldn't get comment details
                 if not recent_comments:
                     changes.append({
                         "type": "comment",
                         "data": {"author": "unknown", "body": f"({new_count} new comment{'s' if new_count > 1 else ''})"}
                     })
 
-            # Check for label changes
             last_labels = json.loads(sub.get("last_labels", "[]"))
             if set(current_labels) != set(last_labels):
                 added = set(current_labels) - set(last_labels)
@@ -405,7 +350,6 @@ class IssueNotifier:
                 if removed:
                     changes.append({"type": "labels_removed", "data": {"labels": list(removed)}})
 
-            # Send notification if there are changes
             if changes:
                 await self._send_notification(
                     user_id=sub["user_id"],
@@ -415,7 +359,6 @@ class IssueNotifier:
                     changes=changes
                 )
 
-        # Update stored state for all subscribers
         if subscriptions:
             await self.subscriptions.update_issue_state(
                 issue_number=issue_number,
@@ -432,20 +375,17 @@ class IssueNotifier:
         issue: dict,
         changes: list[dict]
     ):
-        """Send notification to user (DM first, fallback to channel)."""
         from .pollinations import pollinations_client
 
         issue_number = issue["number"]
         issue_url = issue.get("url", f"https://github.com/{config.github_repo}/issues/{issue_number}")
 
-        # Use AI to format a beautiful notification
         message = await pollinations_client.format_notification(
             issue=issue,
             changes=changes,
             issue_url=issue_url
         )
 
-        # Try DM first
         try:
             user = await self.bot.fetch_user(user_id)
             if user:
@@ -459,33 +399,30 @@ class IssueNotifier:
         except Exception as e:
             logger.warning(f"Error sending DM to {user_id}: {e}")
 
-        # Fallback to channel
         try:
             channel = self.bot.get_channel(channel_id)
             if not channel:
                 channel = await self.bot.fetch_channel(channel_id)
 
             if channel:
-                # Mention the user in the channel
                 await channel.send(f"<@{user_id}> {message}")
                 logger.debug(f"Sent channel notification for issue #{issue_number}")
         except discord.Forbidden:
             logger.warning(f"No permission to send to channel {channel_id}")
         except discord.NotFound:
             logger.warning(f"Channel {channel_id} not found, removing subscription")
-            # Channel was deleted, clean up subscription
             await self.subscriptions.unsubscribe(user_id, issue_number)
         except Exception as e:
             logger.error(f"Failed to send notification: {e}")
 
 
-# Singleton instances
 subscription_manager = SubscriptionManager()
 issue_notifier: Optional[IssueNotifier] = None
 
 
 def init_notifier(bot: discord.Client):
-    """Initialize the notifier with the bot instance."""
     global issue_notifier
     issue_notifier = IssueNotifier(bot, subscription_manager)
     return issue_notifier
+
+

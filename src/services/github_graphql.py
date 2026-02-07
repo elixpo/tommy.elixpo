@@ -8,7 +8,6 @@ GraphQL advantages over REST:
 
 Supports both GitHub App (for org repos) and PAT authentication.
 """
-
 import logging
 import time
 from typing import Optional, Any
@@ -21,19 +20,15 @@ logger = logging.getLogger(__name__)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 
-# TTL cache for labels/milestones (5 minutes)
 CACHE_TTL = 300
 
 
 class TTLCache:
-    """Simple thread-safe TTL cache."""
-
     def __init__(self, ttl: int = CACHE_TTL):
         self._cache: dict[str, tuple[float, Any]] = {}
         self._ttl = ttl
 
     def get(self, key: str) -> Optional[Any]:
-        """Get cached value if not expired."""
         if key in self._cache:
             timestamp, value = self._cache[key]
             if time.time() - timestamp < self._ttl:
@@ -42,11 +37,9 @@ class TTLCache:
         return None
 
     def set(self, key: str, value: Any):
-        """Cache a value."""
         self._cache[key] = (time.time(), value)
 
     def invalidate(self, key: Optional[str] = None):
-        """Invalidate specific key or entire cache."""
         if key:
             self._cache.pop(key, None)
         else:
@@ -54,25 +47,20 @@ class TTLCache:
 
 
 class GitHubGraphQL:
-    """GitHub GraphQL client with connection pooling and caching."""
-
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
-        self._cache = TTLCache(ttl=CACHE_TTL)  # 5 min cache for labels/milestones
+        self._cache = TTLCache(ttl=CACHE_TTL)
 
     @property
     def owner(self) -> str:
-        """Get repository owner."""
         return config.github_repo.split("/")[0]
 
     @property
     def repo(self) -> str:
-        """Get repository name."""
         return config.github_repo.split("/")[1]
 
     async def get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session with connection pooling."""
         if self._session is None or self._session.closed:
             self._connector = aiohttp.TCPConnector(
                 limit=50,
@@ -89,7 +77,6 @@ class GitHubGraphQL:
         return self._session
 
     async def close(self):
-        """Close the aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
@@ -98,21 +85,12 @@ class GitHubGraphQL:
             self._connector = None
 
     async def _get_token(self, for_projects: bool = False) -> Optional[str]:
-        """Get GitHub token (from App or PAT).
-
-        Args:
-            for_projects: If True, tries GitHub App first for ProjectV2 operations,
-                         then falls back to GITHUB_PROJECT_PAT if App fails.
-        """
-        # For projects: try Bot (GitHub App) first, then fall back to PAT
         if for_projects:
-            # Try GitHub App first
             if github_auth.github_app_auth:
                 token = await github_auth.github_app_auth.get_token()
                 if token:
                     logger.debug("Using GitHub App token for project operation")
                     return token
-            # Fall back to project PAT
             if config.github_project_pat:
                 logger.debug("Falling back to GITHUB_PROJECT_PAT for project operation")
                 return config.github_project_pat
@@ -122,12 +100,10 @@ class GitHubGraphQL:
                 )
                 return None
 
-        # Regular operations use GitHub App or fallback PAT
         if github_auth.github_app_auth:
             token = await github_auth.github_app_auth.get_token()
             if token:
                 return token
-        # Fallback to PAT
         return config.github_token if config.github_token else None
 
     async def _execute(
@@ -137,14 +113,6 @@ class GitHubGraphQL:
         use_sub_issues: bool = False,
         for_projects: bool = False,
     ) -> dict:
-        """Execute a GraphQL query. Returns dict with 'data' and/or 'error' keys.
-
-        Args:
-            query: GraphQL query string
-            variables: Query variables
-            use_sub_issues: Add sub_issues preview header
-            for_projects: Try GitHub App first for ProjectV2, fall back to GITHUB_PROJECT_PAT
-        """
         token = await self._get_token(for_projects=for_projects)
         if not token:
             if for_projects:
@@ -158,7 +126,6 @@ class GitHubGraphQL:
             "Content-Type": "application/json",
         }
 
-        # Only add sub_issues preview header when needed (can cause issues with other queries)
         if use_sub_issues or "subIssue" in query or "parent" in query:
             headers["GraphQL-Features"] = "sub_issues"
 
@@ -177,7 +144,6 @@ class GitHubGraphQL:
                 if response.status == 200:
                     data = await response.json()
                     if "errors" in data:
-                        # Extract error messages for AI to understand
                         error_msgs = [e.get("message", str(e)) for e in data["errors"]]
                         logger.warning(f"GraphQL errors: {error_msgs}")
                         return {
@@ -195,19 +161,9 @@ class GitHubGraphQL:
             logger.error(f"GraphQL request failed: {e}")
             return {"error": f"GitHub request failed: {str(e)}"}
 
-    # =========================================================================
-    # SINGLE ISSUE WITH EVERYTHING - One call gets issue + comments + labels
-    # =========================================================================
-
     async def get_issue_full(
         self, issue_number: int, comments_count: int = 5
     ) -> Optional[dict]:
-        """
-        Get issue with comments and all metadata in ONE request.
-
-        REST equivalent: 2 calls (get_issue + get_comments)
-        GraphQL: 1 call - 50% faster!
-        """
         query = """
         query GetIssueFull($owner: String!, $repo: String!, $number: Int!, $commentsCount: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -269,7 +225,6 @@ class GitHubGraphQL:
             },
         )
 
-        # Return error to AI if GraphQL failed
         if result.get("error"):
             return {"error": result["error"]}
 
@@ -283,26 +238,14 @@ class GitHubGraphQL:
 
         return self._format_issue_full(issue)
 
-    # =========================================================================
-    # SEARCH WITH FULL DETAILS - Search + metadata in one call
-    # =========================================================================
-
     async def search_issues_full(
         self, keywords: str, state: str = "open", limit: int = 10
     ) -> list[dict]:
-        """
-        Search issues with FULL details included.
-
-        REST equivalent: 1 search + N get_issue calls
-        GraphQL: 1 call - up to 90% faster for detailed results!
-        """
-        # Build search query
         state_filter = ""
         if state == "open":
             state_filter = "is:open"
         elif state == "closed":
             state_filter = "is:closed"
-        # "all" = no state filter
 
         search_query = f"repo:{config.github_repo} is:issue {state_filter} {keywords}"
 
@@ -334,7 +277,6 @@ class GitHubGraphQL:
 
         result = await self._execute(query, {"query": search_query, "limit": limit})
 
-        # Return error to AI if GraphQL failed
         if result.get("error"):
             return [{"error": result["error"]}]
 
@@ -344,30 +286,19 @@ class GitHubGraphQL:
 
         issues = []
         for node in data["search"].get("nodes", []):
-            if node:  # Can be null for non-issue results
+            if node:
                 issues.append(self._format_issue_list(node))
 
         return issues
 
-    # =========================================================================
-    # BATCH ISSUE LOOKUP - Get multiple issues in one call
-    # =========================================================================
-
     async def get_issues_batch(
         self, issue_numbers: list[int], include_comments: bool = False
     ) -> dict:
-        """
-        Get multiple issues in ONE request.
-
-        REST equivalent: N separate get_issue calls
-        GraphQL: 1 call - huge savings for batch lookups!
-        """
         if not issue_numbers:
             return {}
 
-        # Build dynamic query with aliases for each issue
         issue_queries = []
-        for i, num in enumerate(issue_numbers[:20]):  # Limit to 20
+        for i, num in enumerate(issue_numbers[:20]):
             comments_fragment = (
                 """
                 comments(last: 3) {
@@ -413,7 +344,6 @@ class GitHubGraphQL:
 
         result = await self._execute(query, {"owner": self.owner, "repo": self.repo})
 
-        # Return error to AI if GraphQL failed
         if result.get("error"):
             return {"error": result["error"]}
 
@@ -441,15 +371,7 @@ class GitHubGraphQL:
 
         return results
 
-    # =========================================================================
-    # SIMILAR ISSUES WITH METADATA - Perfect for duplicate detection
-    # =========================================================================
-
     async def find_similar_issues(self, keywords: str, limit: int = 5) -> list[dict]:
-        """
-        Find similar issues with enough detail to show user for duplicate detection.
-        Optimized for speed - only fetches what's needed for comparison.
-        """
         search_query = f"repo:{config.github_repo} is:issue is:open {keywords}"
 
         query = """
@@ -478,7 +400,6 @@ class GitHubGraphQL:
 
         result = await self._execute(query, {"query": search_query, "limit": limit})
 
-        # Return error to AI if GraphQL failed
         if result.get("error"):
             return [{"error": result["error"]}]
 
@@ -492,36 +413,22 @@ class GitHubGraphQL:
             if node
         ]
 
-    # =========================================================================
-    # USER'S ISSUES - Find issues by Discord username in body
-    # =========================================================================
-
     async def search_user_issues(
         self, discord_username: str, state: str = "open", limit: int = 10
     ) -> list[dict]:
-        """
-        Search for issues created by a Discord user.
-        Searches for username in issue body (Discord footer).
-        """
         state_filter = ""
         if state == "open":
             state_filter = "is:open"
         elif state == "closed":
             state_filter = "is:closed"
 
-        # Search for Discord author marker AND the username
         search_query = f'repo:{config.github_repo} is:issue {state_filter} "**Author:**" "{discord_username}"'
 
         return await self.search_issues_full(
             keywords=f'"**Author:**" "{discord_username}"', state=state, limit=limit
         )
 
-    # =========================================================================
-    # LATEST ISSUE NUMBER - For estimating new issue number
-    # =========================================================================
-
     async def get_latest_issue_number(self) -> Optional[int]:
-        """Get the most recent issue number."""
         query = """
         query GetLatestIssue($owner: String!, $repo: String!) {
             repository(owner: $owner, name: $repo) {
@@ -545,20 +452,9 @@ class GitHubGraphQL:
             return issues[0]["number"] + 1
         return None
 
-    # =========================================================================
-    # PROJECT MANAGEMENT
-    # =========================================================================
-
     async def get_project_id(
         self, project_number: int, org: Optional[str] = None
     ) -> Optional[str]:
-        """
-        Get the GraphQL node ID for a project by its number.
-
-        Args:
-            project_number: The project number (e.g., 20 from projects/20)
-            org: Organization name (defaults to repo owner)
-        """
         if org is None:
             org = self.owner
 
@@ -577,7 +473,6 @@ class GitHubGraphQL:
             query, {"org": org, "number": project_number}, for_projects=True
         )
 
-        # Return error string for AI to see
         if result.get("error"):
             return f"error:{result['error']}"
 
@@ -594,7 +489,6 @@ class GitHubGraphQL:
     async def get_issue_node_id(
         self, issue_number: int, for_projects: bool = False
     ) -> Optional[str]:
-        """Get the GraphQL node ID for an issue."""
         query = """
         query GetIssueId($owner: String!, $repo: String!, $number: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -611,7 +505,6 @@ class GitHubGraphQL:
             for_projects=for_projects,
         )
 
-        # Return error string for AI to see
         if result.get("error"):
             return f"error:{result['error']}"
 
@@ -625,7 +518,6 @@ class GitHubGraphQL:
     async def get_pr_node_id(
         self, pr_number: int, for_projects: bool = False
     ) -> Optional[str]:
-        """Get the GraphQL node ID for a pull request."""
         query = """
         query GetPRId($owner: String!, $repo: String!, $number: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -655,24 +547,16 @@ class GitHubGraphQL:
     async def get_content_node_id(
         self, number: int, for_projects: bool = False
     ) -> tuple[Optional[str], str]:
-        """
-        Get the GraphQL node ID for an issue or PR.
-        Returns (node_id, content_type) where content_type is 'issue' or 'pr'.
-        Tries issue first, then PR.
-        """
-        # Try issue first
         issue_id = await self.get_issue_node_id(number, for_projects=for_projects)
         if issue_id and not (
             isinstance(issue_id, str) and issue_id.startswith("error:")
         ):
             return issue_id, "issue"
 
-        # Try PR
         pr_id = await self.get_pr_node_id(number, for_projects=for_projects)
         if pr_id and not (isinstance(pr_id, str) and pr_id.startswith("error:")):
             return pr_id, "pr"
 
-        # Return error if neither found
         if isinstance(issue_id, str) and issue_id.startswith("error:"):
             return issue_id, "error"
         if isinstance(pr_id, str) and pr_id.startswith("error:"):
@@ -683,15 +567,6 @@ class GitHubGraphQL:
     async def add_to_project(
         self, number: int, project_number: int, org: Optional[str] = None
     ) -> dict:
-        """
-        Add an issue OR pull request to a GitHub Project (ProjectV2).
-
-        Args:
-            number: The issue or PR number to add
-            project_number: The project number (from the URL)
-            org: Organization name (defaults to repo owner)
-        """
-        # Get project ID
         project_id = await self.get_project_id(project_number, org)
         if not project_id:
             return {
@@ -701,7 +576,6 @@ class GitHubGraphQL:
         if isinstance(project_id, str) and project_id.startswith("error:"):
             return {"success": False, "error": project_id[6:]}
 
-        # Get content node ID (works for both issues and PRs)
         content_id, content_type = await self.get_content_node_id(
             number, for_projects=True
         )
@@ -710,7 +584,6 @@ class GitHubGraphQL:
         if isinstance(content_id, str) and content_id.startswith("error:"):
             return {"success": False, "error": content_id[6:]}
 
-        # Add to project
         mutation = """
         mutation AddToProject($projectId: ID!, $contentId: ID!) {
             addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
@@ -754,34 +627,21 @@ class GitHubGraphQL:
     async def add_issue_to_project(
         self, issue_number: int, project_number: int, org: Optional[str] = None
     ) -> dict:
-        """
-        Add an issue to a GitHub Project (ProjectV2).
-
-        Args:
-            issue_number: The issue number to add
-            project_number: The project number (from the URL)
-            org: Organization name (defaults to repo owner)
-        """
-        # Get project ID (uses project PAT)
         project_id = await self.get_project_id(project_number, org)
         if not project_id:
             return {
                 "success": False,
                 "error": f"Project #{project_number} not found or not accessible",
             }
-        # Check if project_id is an error string
         if isinstance(project_id, str) and project_id.startswith("error:"):
             return {"success": False, "error": project_id[6:]}
 
-        # Get issue node ID (uses project PAT to ensure same auth context)
         issue_id = await self.get_issue_node_id(issue_number, for_projects=True)
         if not issue_id:
             return {"success": False, "error": f"Issue #{issue_number} not found"}
-        # Check if issue_id is an error string
         if isinstance(issue_id, str) and issue_id.startswith("error:"):
             return {"success": False, "error": issue_id[6:]}
 
-        # Add to project (uses project PAT)
         mutation = """
         mutation AddToProject($projectId: ID!, $contentId: ID!) {
             addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
@@ -798,7 +658,6 @@ class GitHubGraphQL:
             for_projects=True,
         )
 
-        # Handle GraphQL errors
         if result.get("error"):
             return {"success": False, "error": result["error"]}
 
@@ -820,16 +679,11 @@ class GitHubGraphQL:
         }
 
     async def list_projects(self, org: Optional[str] = None, limit: int = 20) -> dict:
-        """
-        List all ProjectV2 boards - checks both organization and repository level.
-        Uses simplified query to avoid GitHub API server errors.
-        """
         if org is None:
             org = self.owner
 
         all_projects = []
 
-        # Try organization-level projects (simplified query - no items count to avoid server errors)
         org_query = """
         query ListOrgProjects($org: String!, $limit: Int!) {
             organization(login: $org) {
@@ -868,7 +722,6 @@ class GitHubGraphQL:
                             }
                         )
 
-        # Also try repository-level projects
         repo_query = """
         query ListRepoProjects($owner: String!, $repo: String!, $limit: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -896,7 +749,6 @@ class GitHubGraphQL:
             if repo_data:
                 for p in repo_data.get("projectsV2", {}).get("nodes", []):
                     if p:
-                        # Avoid duplicates (same project might appear at both levels)
                         if not any(ep["number"] == p["number"] for ep in all_projects):
                             all_projects.append(
                                 {
@@ -920,14 +772,9 @@ class GitHubGraphQL:
         return {"projects": all_projects, "count": len(all_projects)}
 
     async def get_project_view(self, project_number: int, org: Optional[str] = None) -> dict:
-        """
-        Get project overview with fields and item counts.
-        Tries organization projects first, then repository projects.
-        """
         if org is None:
             org = self.owner
 
-        # Try organization-level project first (no items count - can cause server errors)
         query = """
         query GetProjectView($org: String!, $number: Int!) {
             organization(login: $org) {
@@ -959,13 +806,11 @@ class GitHubGraphQL:
             query, {"org": org, "number": project_number}, for_projects=True
         )
 
-        # Check if we got a project from org level
         project = None
         org_error = result.get("error")
         if not org_error:
             project = result.get("data", {}).get("organization", {}).get("projectV2")
 
-        # If not found at org level, try repository level
         if not project:
             repo_query = """
             query GetRepoProjectView($owner: String!, $repo: String!, $number: Int!) {
@@ -1002,7 +847,6 @@ class GitHubGraphQL:
             project = result.get("data", {}).get("repository", {}).get("projectV2")
 
         if not project:
-            # Provide helpful error message
             if org_error and "GITHUB_PROJECT_PAT" in str(org_error):
                 return {
                     "error": org_error,
@@ -1015,7 +859,6 @@ class GitHubGraphQL:
                 }
             return {"error": f"Project #{project_number} not found"}
 
-        # Find Status field options
         status_options = []
         for field in project.get("fields", {}).get("nodes", []):
             if field and field.get("name") == "Status" and "options" in field:
@@ -1036,14 +879,9 @@ class GitHubGraphQL:
     async def list_project_items(
         self, project_number: int, status: Optional[str] = None, limit: int = 50, org: Optional[str] = None
     ) -> dict:
-        """
-        List items in a project, optionally filtered by status.
-        Tries organization level first, then repository level.
-        """
         if org is None:
             org = self.owner
 
-        # GraphQL fragment for project items (reused for both queries)
         items_fragment = """
             title
             items(first: $limit) {
@@ -1080,7 +918,6 @@ class GitHubGraphQL:
             }
         """
 
-        # Try organization-level first
         org_query = f"""
         query ListProjectItems($org: String!, $number: Int!, $limit: Int!) {{
             organization(login: $org) {{
@@ -1100,7 +937,6 @@ class GitHubGraphQL:
         if not result.get("error"):
             project = result.get("data", {}).get("organization", {}).get("projectV2")
 
-        # If not found at org level, try repository level
         if not project:
             repo_query = f"""
             query ListRepoProjectItems($owner: String!, $repo: String!, $number: Int!, $limit: Int!) {{
@@ -1135,13 +971,11 @@ class GitHubGraphQL:
             content = node["content"]
             item_status = None
 
-            # Extract Status field value
             for fv in node.get("fieldValues", {}).get("nodes", []):
                 if fv and fv.get("field", {}).get("name") == "Status":
                     item_status = fv.get("name")
                     break
 
-            # Filter by status if specified
             if status and item_status != status:
                 continue
 
@@ -1171,10 +1005,6 @@ class GitHubGraphQL:
     async def get_project_item(
         self, project_number: int, issue_number: int, org: Optional[str] = None
     ) -> dict:
-        """
-        Get a specific item's details from a project.
-        """
-        # First list items and find the one we want
         result = await self.list_project_items(project_number, limit=100, org=org)
         if result.get("error"):
             return result
@@ -1190,13 +1020,9 @@ class GitHubGraphQL:
     async def remove_from_project(
         self, project_number: int, issue_number: int, org: Optional[str] = None
     ) -> dict:
-        """
-        Remove an issue from a project.
-        """
         if org is None:
             org = self.owner
 
-        # First, find the item ID for this issue in the project
         query = """
         query FindProjectItem($org: String!, $number: Int!) {
             organization(login: $org) {
@@ -1226,7 +1052,6 @@ class GitHubGraphQL:
         if not project:
             return {"success": False, "error": f"Project #{project_number} not found"}
 
-        # Find the item ID
         item_id = None
         for node in project.get("items", {}).get("nodes", []):
             if node and node.get("content", {}).get("number") == issue_number:
@@ -1239,7 +1064,6 @@ class GitHubGraphQL:
                 "error": f"Issue #{issue_number} not in project #{project_number}",
             }
 
-        # Remove the item
         mutation = """
         mutation RemoveFromProject($projectId: ID!, $itemId: ID!) {
             deleteProjectV2Item(input: {projectId: $projectId, itemId: $itemId}) {
@@ -1265,13 +1089,9 @@ class GitHubGraphQL:
     async def set_project_item_status(
         self, project_number: int, issue_number: int, status: str, org: Optional[str] = None
     ) -> dict:
-        """
-        Set the Status field for an item in a project.
-        """
         if org is None:
             org = self.owner
 
-        # Get project with Status field info and find the item
         query = """
         query GetProjectForStatusUpdate($org: String!, $number: Int!) {
             organization(login: $org) {
@@ -1310,7 +1130,6 @@ class GitHubGraphQL:
         if not project:
             return {"success": False, "error": f"Project #{project_number} not found"}
 
-        # Find Status field and option
         status_field_id = None
         status_option_id = None
         for field in project.get("fields", {}).get("nodes", []):
@@ -1326,7 +1145,6 @@ class GitHubGraphQL:
             return {"success": False, "error": "Status field not found in project"}
 
         if not status_option_id:
-            # List available options for helpful error
             available = [
                 o["name"]
                 for f in project.get("fields", {}).get("nodes", [])
@@ -1338,7 +1156,6 @@ class GitHubGraphQL:
                 "error": f"Status '{status}' not found. Available: {', '.join(available)}",
             }
 
-        # Find item ID
         item_id = None
         for node in project.get("items", {}).get("nodes", []):
             if node and node.get("content", {}).get("number") == issue_number:
@@ -1351,7 +1168,6 @@ class GitHubGraphQL:
                 "error": f"Issue #{issue_number} not in project #{project_number}. Add it first.",
             }
 
-        # Update the status (optionId must be String per GitHub API)
         mutation = """
         mutation UpdateItemStatus($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
             updateProjectV2ItemFieldValue(input: {
@@ -1395,19 +1211,14 @@ class GitHubGraphQL:
         field_value: str,
         org: Optional[str] = None,
     ) -> dict:
-        """
-        Set a custom field value for an item in a project.
-        """
         if org is None:
             org = self.owner
 
-        # For Status field, use the dedicated method
         if field_name.lower() == "status":
             return await self.set_project_item_status(
                 project_number, issue_number, field_value, org
             )
 
-        # Get project with field info
         query = """
         query GetProjectForFieldUpdate($org: String!, $number: Int!) {
             organization(login: $org) {
@@ -1451,7 +1262,6 @@ class GitHubGraphQL:
         if not project:
             return {"success": False, "error": f"Project #{project_number} not found"}
 
-        # Find the field
         target_field = None
         for field in project.get("fields", {}).get("nodes", []):
             if field and field.get("name", "").lower() == field_name.lower():
@@ -1469,7 +1279,6 @@ class GitHubGraphQL:
                 "error": f"Field '{field_name}' not found. Available: {', '.join(available)}",
             }
 
-        # Find item ID
         item_id = None
         for node in project.get("items", {}).get("nodes", []):
             if node and node.get("content", {}).get("number") == issue_number:
@@ -1482,9 +1291,7 @@ class GitHubGraphQL:
                 "error": f"Issue #{issue_number} not in project #{project_number}",
             }
 
-        # Build mutation based on field type
         if "options" in target_field:
-            # Single select field
             option_id = None
             for opt in target_field["options"]:
                 if opt["name"].lower() == field_value.lower():
@@ -1520,7 +1327,6 @@ class GitHubGraphQL:
                 for_projects=True,
             )
         else:
-            # Text field
             mutation = """
             mutation UpdateTextField($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
                 updateProjectV2ItemFieldValue(input: {
@@ -1555,17 +1361,12 @@ class GitHubGraphQL:
 
         return {"success": False, "error": "Failed to update field"}
 
-    # =========================================================================
-    # FORMATTERS
-    # =========================================================================
-
     def _format_issue_full(self, issue: dict) -> dict:
-        """Format issue with full details including comments."""
         body = issue.get("body") or ""
         result = {
             "number": issue["number"],
             "title": issue["title"],
-            "body": body,  # Full body - no truncation for editing!
+            "body": body,
             "state": issue["state"].lower(),
             "url": issue["url"],
             "created_at": issue["createdAt"][:10],
@@ -1580,7 +1381,6 @@ class GitHubGraphQL:
             "comments_count": issue.get("comments", {}).get("totalCount", 0),
         }
 
-        # Include comments if present
         if "comments" in issue and "nodes" in issue["comments"]:
             result["comments"] = [
                 {
@@ -1591,7 +1391,6 @@ class GitHubGraphQL:
                 for c in issue["comments"]["nodes"]
             ]
 
-        # Include sub-issues (children) if present
         if "subIssues" in issue:
             sub_issues = issue["subIssues"]
             if sub_issues.get("totalCount", 0) > 0:
@@ -1606,7 +1405,6 @@ class GitHubGraphQL:
                 ]
                 result["sub_issues_count"] = sub_issues["totalCount"]
 
-        # Include sub-issues summary if present
         if "subIssuesSummary" in issue and issue["subIssuesSummary"]:
             summary = issue["subIssuesSummary"]
             result["sub_issues_summary"] = {
@@ -1615,7 +1413,6 @@ class GitHubGraphQL:
                 "percent_completed": summary.get("percentCompleted", 0),
             }
 
-        # Include parent issue if this is a sub-issue
         if "parent" in issue and issue["parent"]:
             parent = issue["parent"]
             result["parent_issue"] = {
@@ -1628,12 +1425,11 @@ class GitHubGraphQL:
         return result
 
     def _format_issue_list(self, issue: dict) -> dict:
-        """Format issue for list display."""
         body = issue.get("body") or ""
         return {
             "number": issue["number"],
             "title": issue["title"],
-            "body": body,  # Full body - no truncation!
+            "body": body,
             "state": issue["state"].lower(),
             "url": issue["url"],
             "created_at": issue["createdAt"][:10],
@@ -1641,10 +1437,6 @@ class GitHubGraphQL:
             "labels": [l["name"] for l in issue.get("labels", {}).get("nodes", [])],
             "comments_count": issue.get("comments", {}).get("totalCount", 0),
         }
-
-    # =========================================================================
-    # FLEXIBLE AI-POWERED CUSTOM TOOL
-    # =========================================================================
 
     async def execute_custom_request(
         self,
@@ -1654,18 +1446,7 @@ class GitHubGraphQL:
         graphql_query: Optional[str] = None,
         rest_endpoint: Optional[str] = None,
     ) -> dict:
-        """
-        Execute flexible requests - supports 3 modes:
-
-        1. Natural language (legacy): AI describes what it needs, we keyword-match
-        2. Raw GraphQL: AI provides graphql_query directly - FULL CONTROL
-        3. REST API: AI provides rest_endpoint (e.g., '/issues/123/timeline')
-
-        All modes are READ-ONLY for security.
-        """
-        # Mode 1: Raw GraphQL query - AI has full control
         if graphql_query:
-            # Security: block mutations
             query_lower = graphql_query.lower()
             if any(
                 word in query_lower
@@ -1697,9 +1478,7 @@ class GitHubGraphQL:
                 "data": result.get("data", result),
             }
 
-        # Mode 2: REST API endpoint
         if rest_endpoint:
-            # Security: only allow GET requests to specific paths
             endpoint = rest_endpoint.strip("/")
             allowed_prefixes = [
                 "issues",
@@ -1735,13 +1514,11 @@ class GitHubGraphQL:
             except Exception as e:
                 return {"error": str(e)}
 
-        # Mode 3: Legacy natural language (keyword matching)
         request_lower = request.lower()
-        limit = min(limit, 100)  # Cap at 100
+        limit = min(limit, 100)
 
         results = {}
 
-        # Detect what data is needed from the request
         needs_issues = any(
             word in request_lower
             for word in ["issue", "spam", "stale", "bug", "report"]
@@ -1760,7 +1537,6 @@ class GitHubGraphQL:
         needs_branches = "branch" in request_lower
         needs_labels = "label" in request_lower
 
-        # If nothing specific detected, fetch issues by default (most common use case)
         if not any(
             [
                 needs_issues,
@@ -1774,7 +1550,6 @@ class GitHubGraphQL:
         ):
             needs_issues = True
 
-        # Fetch requested data in parallel where possible
         if needs_issues:
             issues_data = await self._fetch_all_issues(
                 limit=limit, include_body=include_body
@@ -1814,7 +1589,6 @@ class GitHubGraphQL:
     async def _fetch_all_issues(
         self, limit: int = 50, include_body: bool = False
     ) -> dict:
-        """Fetch all open issues with optional body text for analysis."""
         body_field = "body" if include_body else ""
 
         query = f"""
@@ -1864,7 +1638,7 @@ class GitHubGraphQL:
                 "comments": i.get("comments", {}).get("totalCount", 0),
             }
             if include_body:
-                item["body"] = i.get("body", "")  # Full body - no truncation!
+                item["body"] = i.get("body", "")
             formatted.append(item)
 
         return {
@@ -1877,7 +1651,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_prs(self, limit: int = 50) -> dict:
-        """Fetch pull requests with counts."""
         query = """
         query PRs($owner: String!, $repo: String!, $limit: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -1931,7 +1704,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_commits(self, limit: int = 50) -> dict:
-        """Fetch recent commits."""
         query = """
         query Commits($owner: String!, $repo: String!, $limit: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -1989,7 +1761,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_repo_stats(self) -> dict:
-        """Fetch repository statistics."""
         query = """
         query RepoStats($owner: String!, $repo: String!) {
             repository(owner: $owner, name: $repo) {
@@ -2034,7 +1805,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_releases(self, limit: int = 20) -> dict:
-        """Fetch releases."""
         query = """
         query Releases($owner: String!, $repo: String!, $limit: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -2081,7 +1851,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_branches(self, limit: int = 30) -> dict:
-        """Fetch branches."""
         query = """
         query Branches($owner: String!, $repo: String!, $limit: Int!) {
             repository(owner: $owner, name: $repo) {
@@ -2124,7 +1893,6 @@ class GitHubGraphQL:
         }
 
     async def _fetch_labels(self) -> dict:
-        """Fetch labels with issue counts (cached for 5 min)."""
         cache_key = f"labels:{self.owner}/{self.repo}"
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -2174,19 +1942,12 @@ class GitHubGraphQL:
         return response
 
     async def _fetch_milestones(self, state: str = "OPEN") -> dict:
-        """
-        Fetch milestones with issue counts using GraphQL (cached for 5 min).
-
-        Args:
-            state: OPEN, CLOSED, or all (for both)
-        """
         cache_key = f"milestones:{self.owner}/{self.repo}:{state.upper()}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.debug("Milestones cache hit")
             return cached
 
-        # GraphQL uses uppercase state names
         states_filter = []
         if state.upper() == "ALL":
             states_filter = ["OPEN", "CLOSED"]
@@ -2245,15 +2006,9 @@ class GitHubGraphQL:
         self._cache.set(cache_key, response)
         return response
 
-    # =========================================================================
-    # SUB-ISSUE MANAGEMENT
-    # =========================================================================
-
     async def add_sub_issue(
         self, parent_issue_number: int, child_issue_number: int
     ) -> dict:
-        """Add a sub-issue to a parent issue."""
-        # Get issue node IDs
         parent_id = await self.get_issue_node_id(parent_issue_number)
         if not parent_id:
             return {
@@ -2313,8 +2068,6 @@ class GitHubGraphQL:
     async def remove_sub_issue(
         self, parent_issue_number: int, child_issue_number: int
     ) -> dict:
-        """Remove a sub-issue from a parent issue."""
-        # Get issue node IDs
         parent_id = await self.get_issue_node_id(parent_issue_number)
         if not parent_id:
             return {
@@ -2365,28 +2118,15 @@ class GitHubGraphQL:
 
         return {"success": False, "error": "Failed to remove sub-issue"}
 
-    # =========================================================================
-    # COMBINED OVERVIEW QUERY - One call for everything
-    # =========================================================================
-
     async def get_repo_overview(
         self, issues_limit: int = 10, include_projects: bool = True
     ) -> dict:
-        """
-        Get repository overview in ONE GraphQL call.
-        Combines: open issues, labels, milestones, and optionally projects.
-
-        This saves 3-4 separate API calls into 1, dramatically reducing latency.
-        """
-        # Build combined query
         query = """
         query RepoOverview($owner: String!, $repo: String!, $issuesLimit: Int!) {
             repository(owner: $owner, name: $repo) {
-                # Issue counts
                 openIssues: issues(states: OPEN) { totalCount }
                 closedIssues: issues(states: CLOSED) { totalCount }
 
-                # Recent open issues
                 issues(first: $issuesLimit, states: OPEN, orderBy: {field: UPDATED_AT, direction: DESC}) {
                     nodes {
                         number
@@ -2401,7 +2141,6 @@ class GitHubGraphQL:
                     }
                 }
 
-                # All labels with issue counts
                 labels(first: 50) {
                     nodes {
                         name
@@ -2410,7 +2149,6 @@ class GitHubGraphQL:
                     }
                 }
 
-                # Milestones
                 milestones(first: 20, states: OPEN, orderBy: {field: DUE_DATE, direction: ASC}) {
                     nodes {
                         title
@@ -2436,7 +2174,6 @@ class GitHubGraphQL:
         if not repo:
             return {"error": "Repository not found"}
 
-        # Format response
         overview = {
             "issue_counts": {
                 "open": repo.get("openIssues", {}).get("totalCount", 0),
@@ -2481,39 +2218,19 @@ class GitHubGraphQL:
             ],
         }
 
-        # Optionally fetch projects (separate call needed due to different auth)
         if include_projects:
             projects_result = await self.list_projects(limit=10)
             if not projects_result.get("error"):
                 overview["projects"] = [
                     {"number": p["number"], "title": p["title"], "url": p["url"]}
-                    for p in projects_result.get("projects", [])[:5]  # Top 5 projects
+                    for p in projects_result.get("projects", [])[:5]
                 ]
 
         return overview
 
-    # =========================================================================
-    # EDIT HISTORY - Title changes and body edits for issues/PRs
-    # =========================================================================
-
     async def get_edit_history(
         self, number: int, is_pr: bool = False, limit: int = 10, edit_index: Optional[int] = None
     ) -> dict:
-        """
-        Get edit history for an issue or PR.
-
-        Args:
-            number: Issue/PR number
-            is_pr: True for PR, False for issue
-            limit: Max edits to fetch (default 10)
-            edit_index: If provided, return FULL diff for this specific edit (0-indexed, 0=most recent)
-
-        Returns:
-        - Title changes (RenamedTitleEvent from timelineItems)
-        - Body edits (userContentEdits on the issue/PR itself)
-
-        Works for both issues and PRs via GraphQL.
-        """
         item_type = "pullRequest" if is_pr else "issue"
 
         query = f"""
@@ -2525,7 +2242,6 @@ class GitHubGraphQL:
                     createdAt
                     author {{ login }}
 
-                    # Body edit history
                     userContentEdits(first: $limit) {{
                         totalCount
                         nodes {{
@@ -2535,7 +2251,6 @@ class GitHubGraphQL:
                         }}
                     }}
 
-                    # Title change history
                     timelineItems(first: 50, itemTypes: [RENAMED_TITLE_EVENT]) {{
                         nodes {{
                             ... on RenamedTitleEvent {{
@@ -2563,10 +2278,9 @@ class GitHubGraphQL:
         if not data:
             return {"error": f"{'PR' if is_pr else 'Issue'} #{number} not found"}
 
-        # Format title changes
         title_changes = []
         for event in data.get("timelineItems", {}).get("nodes", []):
-            if event:  # Can be null
+            if event:
                 title_changes.append(
                     {
                         "date": event["createdAt"][:16].replace("T", " "),
@@ -2578,17 +2292,15 @@ class GitHubGraphQL:
                     }
                 )
 
-        # Format body edits
         body_edits = []
         edits_data = data.get("userContentEdits", {})
         nodes = edits_data.get("nodes", [])
 
         for i, edit in enumerate(nodes):
-            if edit:  # Can be null
+            if edit:
                 diff = edit.get("diff", "(no diff available)")
-                # If requesting specific edit, show full diff for that one
                 if edit_index is not None and i == edit_index:
-                    diff_display = diff  # Full diff
+                    diff_display = diff
                 else:
                     diff_display = diff[:500] + "..." if len(diff) > 500 else diff
 
@@ -2618,5 +2330,5 @@ class GitHubGraphQL:
         }
 
 
-# Singleton instance
 github_graphql = GitHubGraphQL()
+

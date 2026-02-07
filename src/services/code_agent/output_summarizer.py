@@ -4,7 +4,6 @@ Output summarizer for code agent.
 Takes verbose code agent output and generates short, Discord-friendly summaries.
 Uses fast models to interpret and summarize.
 """
-
 import asyncio
 import logging
 import re
@@ -18,23 +17,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OutputSummary:
-    """Summary of code agent output."""
-    short_status: str  # 1-line status for embed (e.g., "Fixed bug in getImageURL.js")
-    actions_taken: List[str]  # List of actions (e.g., ["Read src/utils.js", "Edited line 45"])
-    current_activity: str  # What it's doing now
-    files_mentioned: List[str]  # Files referenced
-    errors_found: List[str]  # Any errors detected
-    is_complete: bool  # Whether task seems done
+    short_status: str
+    actions_taken: List[str]
+    current_activity: str
+    files_mentioned: List[str]
+    errors_found: List[str]
+    is_complete: bool
 
 
 class OutputSummarizer:
-    """
-    Summarizes code agent output for Discord.
-
-    Uses pattern matching for speed, falls back to AI for complex output.
-    """
-
-    # Patterns to extract info from code agent output
     PATTERNS = {
         "read_file": r"(?:Reading|Read|Examining)\s+[`']?([^`'\n]+)[`']?",
         "edit_file": r"(?:Editing|Edited|Modified|Modifying)\s+[`']?([^`'\n]+)[`']?",
@@ -49,28 +40,15 @@ class OutputSummarizer:
     }
 
     def __init__(self, use_ai_summary: bool = True):
-        """
-        Initialize summarizer.
-
-        Args:
-            use_ai_summary: If True, use Gemini for complex summaries.
-                           If False, only use pattern matching.
-        """
         self.use_ai_summary = use_ai_summary
 
     def extract_quick_summary(self, output: str) -> OutputSummary:
-        """
-        Quick pattern-based summary extraction.
-
-        Fast but may miss nuanced information.
-        """
         actions = []
         files = []
         errors = []
         current = ""
         is_complete = False
 
-        # Extract file operations
         for pattern_name, pattern in self.PATTERNS.items():
             matches = re.findall(pattern, output, re.IGNORECASE)
             for match in matches:
@@ -103,18 +81,15 @@ class OutputSummarizer:
                 elif pattern_name == "test_fail":
                     errors.append("Tests failed")
 
-        # Determine current activity from last few lines
         lines = [l.strip() for l in output.split('\n') if l.strip()][-5:]
         for line in reversed(lines):
             if len(line) > 10 and not line.startswith('['):
                 current = line[:100]
                 break
 
-        # Generate short status
         if is_complete:
             short_status = "Task completed"
             if actions:
-                # Find most significant action
                 for action in reversed(actions):
                     if "PR" in action or "Pushed" in action or "Committed" in action:
                         short_status = action
@@ -126,14 +101,13 @@ class OutputSummarizer:
         else:
             short_status = "Working..."
 
-        # Deduplicate files
         files = list(dict.fromkeys(files))
 
         return OutputSummary(
             short_status=short_status,
-            actions_taken=actions[-10:],  # Last 10 actions
+            actions_taken=actions[-10:],
             current_activity=current,
-            files_mentioned=files[:20],  # Limit files
+            files_mentioned=files[:20],
             errors_found=errors,
             is_complete=is_complete
         )
@@ -144,21 +118,9 @@ class OutputSummarizer:
         task_context: str = "",
         max_length: int = 100
     ) -> str:
-        """
-        Use Gemini to generate a human-friendly summary.
-
-        Args:
-            output: Code agent output to summarize
-            task_context: Original task description for context
-            max_length: Maximum summary length
-
-        Returns:
-            Short summary string
-        """
         if not self.use_ai_summary:
             summary = self.extract_quick_summary(output)
             return summary.short_status
-
 
         prompt = f"""Summarize this AI coding assistant's output in ONE short sentence (max {max_length} chars).
 Focus on: what was done, what file was changed, any errors.
@@ -174,14 +136,13 @@ One-sentence summary:"""
 
         try:
             response = await model_router.chat(
-                model_id="gemini-large",  # 1M context for large outputs
+                model_id="gemini-large",
                 messages=[{"role": "user", "content": prompt}],
                 task_type="quick",
                 max_tokens=150,
             )
 
             summary = response.get("content", "").strip()
-            # Clean up
             summary = summary.replace('"', '').replace("'", "")
             if len(summary) > max_length:
                 summary = summary[:max_length-3] + "..."
@@ -189,7 +150,6 @@ One-sentence summary:"""
 
         except Exception as e:
             logger.warning(f"AI summary failed: {e}")
-            # Fall back to pattern matching
             quick = self.extract_quick_summary(output)
             return quick.short_status
 
@@ -198,16 +158,10 @@ One-sentence summary:"""
         output: str,
         existing_steps: List[str]
     ) -> List[tuple]:
-        """
-        Analyze output and suggest which checklist steps are complete.
-
-        Returns list of (step_index, status) tuples.
-        """
         summary = self.extract_quick_summary(output)
 
         updates = []
 
-        # Simple heuristics for common steps
         step_keywords = {
             "analyze": ["read", "examined", "analyzed", "found"],
             "find": ["found", "located", "identified", "searching"],
@@ -225,7 +179,6 @@ One-sentence summary:"""
             for keyword, indicators in step_keywords.items():
                 if keyword in step_lower:
                     if any(ind in actions_str or ind in output_lower for ind in indicators):
-                        # Check if it looks complete vs in progress
                         if summary.is_complete or "completed" in output_lower:
                             updates.append((i, "completed"))
                         else:
@@ -235,5 +188,4 @@ One-sentence summary:"""
         return updates
 
 
-# Global instance
 output_summarizer = OutputSummarizer(use_ai_summary=True)

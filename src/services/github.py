@@ -3,7 +3,6 @@
 Uses GraphQL for read operations (blazing fast!) and REST for write operations.
 Supports both GitHub App (for org repos) and PAT authentication.
 """
-
 import asyncio
 import logging
 import aiohttp
@@ -19,27 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubManager:
-    """Full GitHub Issues management - search, lookup, create, comment."""
-
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
 
     @property
     def repo(self) -> str:
-        """Get the configured repository."""
         return config.github_repo
 
     async def get_session(self) -> aiohttp.ClientSession:
-        """Get or create the aiohttp session with connection pooling."""
         if self._session is None or self._session.closed:
-            # Connection pooling for faster subsequent requests
             self._connector = aiohttp.TCPConnector(
-                limit=50,  # Max total connections
-                limit_per_host=30,  # Max per host (GitHub)
-                keepalive_timeout=60,  # Keep connections alive longer
+                limit=50,
+                limit_per_host=30,
+                keepalive_timeout=60,
                 enable_cleanup_closed=True,
-                ttl_dns_cache=300,  # Cache DNS for 5 mins
+                ttl_dns_cache=300,
                 use_dns_cache=True,
             )
             self._session = aiohttp.ClientSession(
@@ -49,7 +43,6 @@ class GitHubManager:
         return self._session
 
     async def close(self):
-        """Close the aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
@@ -58,23 +51,19 @@ class GitHubManager:
             self._connector = None
 
     async def _get_token(self) -> Optional[str]:
-        """Get GitHub token (from App or PAT)."""
         if github_auth.github_app_auth:
             token = await github_auth.github_app_auth.get_token()
             if token:
                 return token
-        # Fallback to PAT
         return config.github_token if config.github_token else None
 
     def _has_auth(self) -> bool:
-        """Check if any auth method is available (sync check)."""
         has_app = github_auth.github_app_auth is not None
         has_pat = bool(config.github_token)
         logger.debug(f"_has_auth check: app={has_app}, pat={has_pat}")
         return has_app or has_pat
 
     async def _get_headers(self) -> Optional[dict]:
-        """Get standard GitHub API headers."""
         token = await self._get_token()
         if not token:
             return None
@@ -84,10 +73,6 @@ class GitHubManager:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-    # ============================================================
-    # SEARCH OPERATIONS
-    # ============================================================
-
     async def search_issues(
         self,
         keywords: str,
@@ -96,23 +81,9 @@ class GitHubManager:
         labels: Optional[list[str]] = None,
         limit: int = 10,
     ) -> list[dict]:
-        """
-        Search issues with flexible filters.
-
-        Args:
-            keywords: Search terms
-            state: "open", "closed", or "all"
-            author: GitHub username or Discord username (searches body for Discord)
-            labels: List of labels to filter by
-            limit: Max results (default 10)
-
-        Returns:
-            List of issue dicts with number, title, state, url, labels, created_at
-        """
         if not self._has_auth():
             return []
 
-        # Build query parts
         query_parts = [f"repo:{config.github_repo}", "is:issue"]
 
         if keywords.strip():
@@ -122,8 +93,6 @@ class GitHubManager:
             query_parts.append(f"is:{state}")
 
         if author:
-            # Could be GitHub username or Discord username in body
-            # We'll search body for Discord usernames
             query_parts.append(f'"{author}"')
 
         if labels:
@@ -157,18 +126,6 @@ class GitHubManager:
         state: str = "open",
         limit: int = 10,
     ) -> list[dict]:
-        """
-        Search for issues created via Discord.
-
-        Args:
-            discord_username: Filter by Discord author (e.g., "_dr_misterio_")
-            state: "open", "closed", or "all"
-            limit: Max results
-
-        Returns:
-            List of issues created via Discord
-        """
-        # Search for issues with Discord author marker
         keywords = '"**Author:**"'
         if discord_username:
             keywords += f' "{discord_username}"'
@@ -176,26 +133,9 @@ class GitHubManager:
         return await self.search_issues(keywords=keywords, state=state, limit=limit)
 
     async def search_similar_issues(self, keywords: str, limit: int = 5) -> list[dict]:
-        """
-        Search for similar issues (used during issue creation).
-        Optimized for speed - only open issues.
-        """
         return await self.search_issues(keywords=keywords, state="open", limit=limit)
 
-    # ============================================================
-    # SINGLE ISSUE OPERATIONS
-    # ============================================================
-
     async def get_issue(self, issue_number: int) -> Optional[dict]:
-        """
-        Get full details of a single issue.
-
-        Args:
-            issue_number: The issue number
-
-        Returns:
-            Issue dict with full details, or None if not found
-        """
         if not self._has_auth():
             return None
 
@@ -221,16 +161,6 @@ class GitHubManager:
         return None
 
     async def get_issue_comments(self, issue_number: int, limit: int = 5) -> list[dict]:
-        """
-        Get recent comments on an issue.
-
-        Args:
-            issue_number: The issue number
-            limit: Max comments to fetch
-
-        Returns:
-            List of comment dicts
-        """
         if not self._has_auth():
             return []
 
@@ -247,7 +177,7 @@ class GitHubManager:
                     data = await response.json()
                     return [
                         {
-                            "id": c["id"],  # Comment ID for edit_comment/delete_comment
+                            "id": c["id"],
                             "author": c["user"]["login"],
                             "body": (
                                 c["body"][:500] + "..."
@@ -263,10 +193,6 @@ class GitHubManager:
 
         return []
 
-    # ============================================================
-    # WRITE OPERATIONS
-    # ============================================================
-
     async def create_issue(
         self,
         title: str,
@@ -278,12 +204,6 @@ class GitHubManager:
         reporter_id: Optional[int] = None,
         message_url: Optional[str] = None,
     ) -> dict:
-        """
-        Create a GitHub issue directly via the API.
-        Returns the actual issue number from the API response.
-
-        """
-
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -301,7 +221,6 @@ class GitHubManager:
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues"
 
-        # No labels - external workflows handle labeling
         payload = {"title": title, "body": body}
 
         try:
@@ -340,7 +259,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def add_comment(self, issue_number: int, comment: str, author: str) -> dict:
-        """Add a comment to an existing issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -388,7 +306,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def _get_comment(self, comment_id: int) -> dict | None:
-        """Fetch a comment by ID to verify ownership."""
         url = f"https://api.github.com/repos/{config.github_repo}/issues/comments/{comment_id}"
         try:
             session = await self.get_session()
@@ -404,24 +321,18 @@ class GitHubManager:
             return None
 
     def _verify_comment_ownership(self, comment_body: str, requester: str) -> bool:
-        """Check if the comment was originally requested by this user."""
-        # Comments created via Discord have format: **From:** `username`
-        # Check if the requester's name appears in the attribution
         if not comment_body or not requester:
             return False
-        # Match the exact format used in add_comment()
         return f"**From:** `{requester}`" in comment_body
 
     async def edit_comment(
         self, comment_id: int, new_body: str, requester: str = None
     ) -> dict:
-        """Edit an existing comment by its ID. Only the original requester can edit."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues/comments/{comment_id}"
 
-        # Verify ownership if requester provided
         if requester:
             comment = await self._get_comment(comment_id)
             if not comment:
@@ -467,13 +378,11 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def delete_comment(self, comment_id: int, requester: str = None) -> dict:
-        """Delete a comment by its ID. Only the original requester can delete."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues/comments/{comment_id}"
 
-        # Verify ownership if requester provided
         if requester:
             comment = await self._get_comment(comment_id)
             if not comment:
@@ -517,33 +426,25 @@ class GitHubManager:
             logger.error(f"Error deleting comment: {e}")
             return {"success": False, "error": str(e)}
 
-    # ============================================================
-    # ADMIN OPERATIONS
-    # ============================================================
-
     async def close_issue(
         self,
         issue_number: int,
         reason: str = "completed",
         comment: Optional[str] = None,
     ) -> dict:
-        """Close an issue with optional comment."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues/{issue_number}"
 
-        # Map reason to GitHub's state_reason
         state_reason = "completed" if reason == "completed" else "not_planned"
 
         try:
             session = await self.get_session()
 
-            # Add comment first if provided
             if comment:
                 await self.add_comment(issue_number, comment, "Admin")
 
-            # Close the issue
             async with session.patch(
                 url,
                 json={"state": "closed", "state_reason": state_reason},
@@ -569,7 +470,6 @@ class GitHubManager:
     async def reopen_issue(
         self, issue_number: int, comment: Optional[str] = None
     ) -> dict:
-        """Reopen a closed issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -578,11 +478,9 @@ class GitHubManager:
         try:
             session = await self.get_session()
 
-            # Add comment first if provided
             if comment:
                 await self.add_comment(issue_number, comment, "Admin")
 
-            # Reopen the issue
             async with session.patch(
                 url,
                 json={"state": "open"},
@@ -608,7 +506,6 @@ class GitHubManager:
     async def edit_issue(
         self, issue_number: int, title: Optional[str] = None, body: Optional[str] = None
     ) -> dict:
-        """Edit an issue's title and/or body."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -652,7 +549,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def add_labels(self, issue_number: int, labels: list[str]) -> dict:
-        """Add labels to an issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -684,12 +580,10 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def remove_labels(self, issue_number: int, labels: list[str]) -> dict:
-        """Remove labels from an issue (parallel execution)."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
         async def remove_single_label(label: str) -> tuple[str, bool, str]:
-            """Remove a single label, return (label, success, error)."""
             url = f"https://api.github.com/repos/{config.github_repo}/issues/{issue_number}/labels/{label}"
             try:
                 session = await self.get_session()
@@ -706,7 +600,6 @@ class GitHubManager:
                 return (label, False, str(e))
 
         try:
-            # Execute all label removals in parallel
             results = await asyncio.gather(
                 *[remove_single_label(label) for label in labels]
             )
@@ -729,7 +622,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def assign_issue(self, issue_number: int, assignees: list[str]) -> dict:
-        """Assign users to an issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -772,7 +664,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def unassign_issue(self, issue_number: int, assignees: list[str]) -> dict:
-        """Remove assignees from an issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -806,11 +697,9 @@ class GitHubManager:
     async def link_issues(
         self, issue_number: int, related_issues: list[int], relationship: str
     ) -> dict:
-        """Link issues by adding a comment with references."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
-        # Build relationship text
         relationship_texts = {
             "duplicate": "Duplicate of",
             "related": "Related to",
@@ -831,17 +720,14 @@ class GitHubManager:
         return result
 
     async def set_milestone(self, issue_number: int, milestone: str) -> dict:
-        """Set or remove milestone from an issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
         url = f"https://api.github.com/repos/{config.github_repo}/issues/{issue_number}"
 
-        # Handle removal
         if milestone.lower() in ("none", "null", "remove"):
             payload = {"milestone": None}
         else:
-            # Need to get milestone number from name
             milestone_num = await self._get_milestone_number(milestone)
             if milestone_num is None:
                 return {"success": False, "error": f"Milestone '{milestone}' not found"}
@@ -873,7 +759,6 @@ class GitHubManager:
             return {"success": False, "error": str(e)}
 
     async def _get_milestone_number(self, milestone_name: str) -> Optional[int]:
-        """Get milestone number from name."""
         url = f"https://api.github.com/repos/{config.github_repo}/milestones"
 
         try:
@@ -893,7 +778,6 @@ class GitHubManager:
         return None
 
     async def list_labels(self) -> list[dict]:
-        """Get all labels in the repository using GraphQL."""
         from .github_graphql import github_graphql
 
         try:
@@ -907,7 +791,6 @@ class GitHubManager:
             return []
 
     async def list_milestones(self, state: str = "open") -> list[dict]:
-        """Get all milestones in the repository using GraphQL."""
         from .github_graphql import github_graphql
 
         try:
@@ -923,7 +806,6 @@ class GitHubManager:
     async def lock_issue(
         self, issue_number: int, lock: bool, reason: Optional[str] = None
     ) -> dict:
-        """Lock or unlock an issue."""
         if not self._has_auth():
             return {"success": False, "error": "GitHub token not configured"}
 
@@ -935,7 +817,6 @@ class GitHubManager:
             if lock:
                 payload = {}
                 if reason:
-                    # GitHub accepts: off-topic, too heated, resolved, spam
                     payload["lock_reason"] = reason.replace(" ", "_")
 
                 async with session.put(
@@ -981,17 +862,10 @@ class GitHubManager:
             logger.error(f"Error locking/unlocking issue: {e}")
             return {"success": False, "error": str(e)}
 
-    # ============================================================
-    # HELPER METHODS
-    # ============================================================
-
     async def _get_latest_issue_number(self) -> Optional[int]:
-        """Get the latest issue number (for estimating new issue number)."""
-        # Use GraphQL for speed
         return await github_graphql.get_latest_issue_number()
 
     def _format_issue_list(self, items: list) -> list[dict]:
-        """Format issues for list display."""
         results = []
         for item in items:
             body = item.get("body") or ""
@@ -1010,7 +884,6 @@ class GitHubManager:
         return results
 
     def _format_issue_detail(self, item: dict) -> dict:
-        """Format a single issue with full details."""
         body = item.get("body") or ""
         return {
             "number": item["number"],
@@ -1035,7 +908,6 @@ class GitHubManager:
         reporter_id: Optional[int] = None,
         message_url: Optional[str] = None,
     ) -> str:
-        """Build the formatted issue body."""
         body = description
 
         if image_urls:
@@ -1048,22 +920,15 @@ class GitHubManager:
             formatted = [f"`{p}`" for p in participants]
             body += f"**Authors:** {', '.join(formatted)}"
         else:
-            # Include Discord username and UID
             author_info = f"`{reporter}`"
             if reporter_id:
                 author_info += f" (UID: `{reporter_id}`)"
             body += f"**Author:** {author_info}"
 
-        # Add link back to the Discord message
         if message_url:
             body += f"\n**Source:** [View on Discord]({message_url})"
 
         return body
-
-
-# =============================================================================
-# CONSOLIDATED TOOL HANDLERS - 3 powerful tools instead of 20+
-# =============================================================================
 
 
 async def tool_github_issue(
@@ -1075,7 +940,7 @@ async def tool_github_issue(
     description: str = None,
     body: str = None,
     comment: str = None,
-    comment_id: int = None,  # For edit_comment/delete_comment actions
+    comment_id: int = None,
     reason: str = "completed",
     labels: list[str] = None,
     assignees: list[str] = None,
@@ -1086,22 +951,16 @@ async def tool_github_issue(
     discord_username: str = None,
     include_comments: bool = False,
     limit: int = 10,
-    child_issue_number: int = None,  # For sub-issue actions
-    edit_index: int = None,  # For get_history - get full diff for specific edit (0=most recent)
-    # Injected by bot.py for subscriptions (legacy params kept for compatibility)
+    child_issue_number: int = None,
+    edit_index: int = None,
     user_id: int = 0,
     channel_id: int = 0,
     guild_id: int = None,
     reporter: str = "Discord User",
     user_role_ids: list[int] = None,
-    # New: context dict injected by pollinations client
     _context: dict = None,
-    **kwargs,  # Catch any extra args
+    **kwargs,
 ) -> dict:
-    """
-    Consolidated issue tool - handles ALL issue operations based on action.
-    """
-    # Extract context if provided (new approach - avoids re-registering handlers per message)
     is_admin = False
     context_user_id = None
     context_user_name = None
@@ -1117,8 +976,6 @@ async def tool_github_issue(
 
     action = action.lower()
 
-    # ADMIN ACTIONS - require admin permission
-    # These actions modify issue state/metadata (not just adding content)
     ADMIN_ACTIONS = {
         "close",
         "reopen",
@@ -1135,13 +992,11 @@ async def tool_github_issue(
         "remove_sub_issue",
     }
 
-    # Exception: Issue #6418 (Seed Upgrade Tracking) can be edited by anyone
     SEED_TRACKING_ISSUE = 6418
     is_seed_tracking_edit = action == "edit" and issue_number == SEED_TRACKING_ISSUE
 
     if action in ADMIN_ACTIONS and not is_seed_tracking_edit:
         if not is_admin:
-            # SECURITY: Log blocked admin action attempt
             logger.warning(
                 f"SECURITY: Blocked admin action '{action}' for non-admin user {context_user_name} (id={context_user_id})"
             )
@@ -1153,7 +1008,6 @@ async def tool_github_issue(
                 f"Admin action '{action}' authorized for {context_user_name} (id={context_user_id})"
             )
 
-    # READ ACTIONS
     if action == "get":
         if not issue_number:
             return {"error": "issue_number required for 'get' action"}
@@ -1225,7 +1079,6 @@ async def tool_github_issue(
         milestones = await github_manager.list_milestones(state=state)
         return {"milestones": milestones, "count": len(milestones), "state": state}
 
-    # WRITE ACTIONS
     elif action == "create":
         if not title or not description:
             return {"error": "title and description required for 'create' action"}
@@ -1234,10 +1087,10 @@ async def tool_github_issue(
             description=description,
             reporter=reporter,
             user_role_ids=user_role_ids,
-            reporter_id=user_id,  # Discord UID from context
+            reporter_id=user_id,
             message_url=(
                 _context.get("message_url") if _context else None
-            ),  # Link back to Discord
+            ),
         )
 
     elif action == "comment":
@@ -1253,7 +1106,7 @@ async def tool_github_issue(
         return await github_manager.edit_comment(
             comment_id=comment_id,
             new_body=body,
-            requester=reporter,  # Only allow editing comments they originally requested
+            requester=reporter,
         )
 
     elif action == "delete_comment":
@@ -1261,10 +1114,9 @@ async def tool_github_issue(
             return {"error": "comment_id required for 'delete_comment' action"}
         return await github_manager.delete_comment(
             comment_id=comment_id,
-            requester=reporter,  # Only allow deleting comments they originally requested
+            requester=reporter,
         )
 
-    # ADMIN ACTIONS
     elif action == "close":
         if not issue_number:
             return {"error": "issue_number required for 'close' action"}
@@ -1343,7 +1195,6 @@ async def tool_github_issue(
             relationship=relationship,
         )
 
-    # SUBSCRIPTION ACTIONS (async SQLite)
     elif action == "subscribe":
         if not issue_number:
             return {"error": "issue_number required for 'subscribe' action"}
@@ -1405,11 +1256,9 @@ async def tool_github_issue(
             "count": len(subs),
         }
 
-    # SUB-ISSUE ACTIONS
     elif action == "get_sub_issues":
         if not issue_number:
             return {"error": "issue_number required for 'get_sub_issues' action"}
-        # get_issue_full already includes sub_issues, so just call it
         issue = await github_graphql.get_issue_full(
             issue_number=issue_number, comments_count=0
         )
@@ -1447,14 +1296,11 @@ async def tool_github_issue(
             "message": f"Issue #{issue_number} is not a sub-issue (has no parent)",
         }
 
-    # ADMIN SUB-ISSUE ACTIONS
     elif action == "create_sub_issue":
-        # Create a new issue and immediately link it as a sub-issue of the parent
         if not issue_number or not title or not description:
             return {
                 "error": "issue_number (parent), title, and description required for 'create_sub_issue' action"
             }
-        # Step 1: Create the new issue
         create_result = await github_manager.create_issue(
             title=title,
             description=description,
@@ -1465,13 +1311,11 @@ async def tool_github_issue(
         )
         if not create_result.get("success"):
             return create_result
-        # Step 2: Link it as a sub-issue of the parent
         child_number = create_result["issue_number"]
         link_result = await github_graphql.add_sub_issue(
             parent_issue_number=issue_number, child_issue_number=child_number
         )
         if link_result.get("error"):
-            # Issue created but linking failed - still return useful info
             return {
                 "success": True,
                 "partial": True,
@@ -1524,10 +1368,6 @@ async def tool_github_project(
     _context: dict = None,
     **kwargs,
 ) -> dict:
-    """
-    Consolidated project tool - handles ALL GitHub Projects V2 operations.
-    """
-    # Extract admin status from context
     is_admin = False
     context_user_id = None
     context_user_name = None
@@ -1538,11 +1378,9 @@ async def tool_github_project(
 
     action = action.lower()
 
-    # ADMIN ACTIONS - require admin permission
     ADMIN_ACTIONS = {"add", "remove", "set_status", "set_field"}
     if action in ADMIN_ACTIONS:
         if not is_admin:
-            # SECURITY: Log blocked admin action attempt
             logger.warning(
                 f"SECURITY: Blocked project admin action '{action}' for non-admin user {context_user_name} (id={context_user_id})"
             )
@@ -1554,17 +1392,14 @@ async def tool_github_project(
                 f"Project admin action '{action}' authorized for {context_user_name} (id={context_user_id})"
             )
 
-    # LIST ALL PROJECTS (no project_number required)
     if action == "list":
         return await github_graphql.list_projects(limit=limit)
 
-    # All other actions require project_number
     if not project_number:
         return {
             "error": f"project_number required for '{action}' action. Use action='list' to see all projects."
         }
 
-    # READ ACTIONS
     if action == "view":
         result = await github_graphql.get_project_view(project_number)
         if result.get("error"):
@@ -1594,11 +1429,9 @@ async def tool_github_project(
             project_number=project_number, issue_number=issue_number
         )
 
-    # WRITE ACTIONS (admin only)
     elif action == "add":
         if not issue_number:
             return {"error": "issue_number (or PR number) required for 'add' action"}
-        # Use the new add_to_project that works for both issues AND PRs
         return await github_graphql.add_to_project(
             number=issue_number, project_number=project_number
         )
@@ -1644,16 +1477,6 @@ async def tool_github_custom(
     _context: dict = None,
     **kwargs,
 ) -> dict:
-    """
-    Fully dynamic GitHub data fetching - AI has FULL read-only control!
-
-    3 modes:
-    1. request: Natural language description (legacy, keyword matching)
-    2. graphql_query: Raw GraphQL query - AI writes the query directly
-    3. rest_endpoint: REST API path (e.g., 'issues/123/timeline')
-
-    AI can use web_search/web_scrape first to find query structure from GitHub docs.
-    """
     return await github_graphql.execute_custom_request(
         request=request or "",
         include_body=include_body,
@@ -1669,28 +1492,16 @@ async def tool_github_overview(
     _context: dict = None,
     **kwargs,
 ) -> dict:
-    """
-    Combined overview query - gets issues, labels, milestones, projects in ONE call.
-    Much faster than making separate calls!
-    """
     return await github_graphql.get_repo_overview(
         issues_limit=min(issues_limit, 50), include_projects=include_projects
     )
 
 
-# Singleton instance
 github_manager = GitHubManager()
 
-# Import PR handler
 from .github_pr import tool_github_pr
 
-# Import subscription manager
 from .subscriptions import subscription_manager
-
-
-# =============================================================================
-# SUBSCRIPTION TOOL HANDLERS
-# =============================================================================
 
 
 async def tool_subscribe_issue(
@@ -1699,8 +1510,6 @@ async def tool_subscribe_issue(
     channel_id: int,
     guild_id: int = None,
 ) -> dict:
-    """Subscribe a user to issue notifications."""
-    # Verify issue exists first - reject subscription to non-existent issues
     issue = await github_graphql.get_issue_full(issue_number)
     if not issue or "error" in issue:
         return {
@@ -1737,7 +1546,6 @@ async def tool_unsubscribe_issue(
     issue_number: int,
     user_id: int,
 ) -> dict:
-    """Unsubscribe a user from issue notifications."""
     was_subscribed = await subscription_manager.unsubscribe(
         user_id=user_id,
         issue_number=issue_number,
@@ -1755,7 +1563,6 @@ async def tool_unsubscribe_issue(
 
 
 async def tool_unsubscribe_all(user_id: int) -> dict:
-    """Unsubscribe a user from all issue notifications."""
     count = await subscription_manager.unsubscribe_all(user_id=user_id)
 
     if count > 0:
@@ -1770,7 +1577,6 @@ async def tool_unsubscribe_all(user_id: int) -> dict:
 
 
 async def tool_list_subscriptions(user_id: int) -> dict:
-    """List all subscriptions for a user."""
     subs = await subscription_manager.get_user_subscriptions(user_id=user_id)
 
     if not subs:
@@ -1793,16 +1599,15 @@ async def tool_list_subscriptions(user_id: int) -> dict:
     }
 
 
-# Export consolidated tool handlers
 TOOL_HANDLERS = {
     "github_issue": tool_github_issue,
     "github_project": tool_github_project,
     "github_custom": tool_github_custom,
     "github_overview": tool_github_overview,
     "github_pr": tool_github_pr,
-    # Subscription handlers
     "subscribe_issue": tool_subscribe_issue,
     "unsubscribe_issue": tool_unsubscribe_issue,
     "unsubscribe_all": tool_unsubscribe_all,
     "list_subscriptions": tool_list_subscriptions,
 }
+
