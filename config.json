@@ -1,13 +1,13 @@
 {
   "bot": {
-    "name": "gitcord",
+    "name": "meaw",
     "default_repo": "elixpo/elixpo_chapter"
   },
   "discord": {
     "admin_role_ids": ["roleid1", "roleid2"]
   },
   "github": {
-    "bot_username": "gitcord-bot",
+    "bot_username": "meaw-bot",
     "admin_users": ["admin_github_username1", "admin_github_username2"],
     "whitelisted_repos": ["elixpo/elixpo_chapter"],
     "admin_only_mentions": true

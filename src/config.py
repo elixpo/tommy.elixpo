@@ -35,46 +35,36 @@ class Config:
         bot_cfg = cfg.get("bot", {})
         self.bot_name = bot_cfg.get("name", "meaw")
         self.default_repo = bot_cfg.get("default_repo", "pollinations/pollinations")
-
         discord_cfg = cfg.get("discord", {})
         self.admin_role_ids: List[int] = discord_cfg.get("admin_role_ids", [])
-
         self.discord_token = os.getenv("DISCORD_TOKEN")
-
         github_cfg = cfg.get("github", {})
         self.github_bot_username = github_cfg.get("bot_username", "pollinations-ci")
         self.github_admin_users: List[str] = [u.lower() for u in github_cfg.get("admin_users", [])]
         self.whitelisted_repos: List[str] = [r.lower() for r in github_cfg.get("whitelisted_repos", [])]
         self.github_admin_only_mentions: bool = github_cfg.get("admin_only_mentions", False)
-
         self.github_token = os.getenv("POLLI_PAT", "")
         self.github_app_id = os.getenv("GITHUB_APP_ID", "")
         self.github_installation_id = os.getenv("GITHUB_INSTALLATION_ID", "")
         self.github_private_key = self._load_private_key()
         self.github_project_pat = os.getenv("GITHUB_PROJECT_PAT", "")
-
         webhook_cfg = cfg.get("webhook", {})
         self.webhook_port = webhook_cfg.get("port", 8002)
         self.webhook_enabled = webhook_cfg.get("enabled", True)
-
         self.webhook_secret = os.getenv("GITHUB_WEBHOOK_SECRET", "")
-
         ai_cfg = cfg.get("ai", {})
         self.pollinations_model = ai_cfg.get("model", "gemini-large")
         self.fallback_model = ai_cfg.get("fallback_model", "openai-large")
-
         self.pollinations_token = os.getenv("POLLINATIONS_TOKEN", "")
-
         features_cfg = cfg.get("features", {})
         self.sandbox_enabled = features_cfg.get("sandbox_enabled", False)
         self.local_embeddings_enabled = features_cfg.get("local_embeddings_enabled", False)
         self.embeddings_repo = features_cfg.get("embeddings_repo", "pollinations/pollinations")
-
         self.doc_embeddings_enabled = features_cfg.get("doc_embeddings_enabled", True)
         self.doc_sites = features_cfg.get("doc_sites", [
-            "https://enter.pollinations.ai",
-            "https://kpi.myceli.ai",
-            "https://gsoc.pollinations.ai"
+            "https_link_to_site1",
+            "https_link_to_site2",
+            "https_link_to_site3...",
         ])
 
     def _load_private_key(self) -> str:
