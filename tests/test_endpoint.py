@@ -3,23 +3,18 @@
 import requests
 import json
 
-url = "http://157.230.129.96:8003/v1/chat/completions"
+url = "http://157.230.129.96:8006/v1/chat/completions"
 
 payload = {
     "messages": [
         {
             "role": "user",
-            "content": "hi"
+            "content": "what are the latest issues on the polinations repo"
         }
     ],
     "user_name": "http_test_user",
     "is_admin": False
 }
-
-print("Sending request to:", url)
-
-print("Payload:", json.dumps(payload, indent=2))
-print("\n" + "="*50 + "\n")
 
 
 try:
