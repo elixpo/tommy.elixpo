@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            config.json
           sparse-checkout-cone-mode: false
 
       - name: Load Config

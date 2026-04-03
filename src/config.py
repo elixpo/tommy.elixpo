@@ -43,7 +43,7 @@ class Config:
         # =================================================================
         bot_cfg = cfg.get("bot", {})
         self.bot_name = bot_cfg.get("name", "Tommy")
-        self.default_repo = bot_cfg.get("default_repo", "pollinations/pollinations")
+        self.default_repo = bot_cfg.get("default_repo", "")
 
         # =================================================================
         # DISCORD CONFIG
@@ -58,7 +58,7 @@ class Config:
         # GITHUB CONFIG
         # =================================================================
         github_cfg = cfg.get("github", {})
-        self.github_bot_username = github_cfg.get("bot_username", "pollinations-ci")
+        self.github_bot_username = github_cfg.get("bot_username", "tommy-bot")
         self.github_admin_users: list[str] = [u.lower() for u in github_cfg.get("admin_users", [])]
         self.whitelisted_repos: list[str] = [r.lower() for r in github_cfg.get("whitelisted_repos", [])]
         self.github_admin_only_mentions: bool = github_cfg.get("admin_only_mentions", False)
@@ -109,7 +109,7 @@ class Config:
         # =================================================================
         features_cfg = cfg.get("features", {})
         self.local_embeddings_enabled = features_cfg.get("local_embeddings_enabled", False)
-        self.embeddings_repo = features_cfg.get("embeddings_repo", "pollinations/pollinations")
+        self.embeddings_repo = features_cfg.get("embeddings_repo", "")
 
         # Doc embeddings (separate from code embeddings)
         self.doc_embeddings_enabled = features_cfg.get("doc_embeddings_enabled", True)

@@ -32,20 +32,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            config.json
           sparse-checkout-cone-mode: false
 
       - name: Load Config
         id: cfg
         run: |
+          # CI config from .github/tommy.yml
           echo "trigger=$(yq '.bot.trigger_phrase' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
           echo "system_prompt=$(yq -r '.bot.system_prompt' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
-          echo "whitelist=$(yq -r '.github.whitelist | join(",")'  .github/tommy.yml)" >> "$GITHUB_OUTPUT"
           echo "secret_app_id=$(yq -r '.github.secrets.app_id' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
           echo "secret_private_key=$(yq -r '.github.secrets.private_key' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
           echo "secret_ai_token=$(yq -r '.github.secrets.ai_token' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
           echo "anthropic_api_key=$(yq -r '.ai.router.anthropic_api_key' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
-          echo "bot_name=$(yq -r '.bot.name' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          # Runtime config from config.json (single source of truth for identity & admin users)
+          echo "bot_name=$(jq -r '.bot.name' config.json)" >> "$GITHUB_OUTPUT"
+          echo "whitelist=$(jq -r '.github.admin_users | join(",")' config.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/create-github-app-token@v1
         id: token
