@@ -1,5 +1,5 @@
-# Tommy - Discord-to-GitHub orchestrator bot
-# Trigger: tommy | Whitelist: voodoohop, ElliotEtag, eulervoid, Circuit-Overtime, Itachi-1824
+# Tommy CI — Issue & PR Assistant
+# Config lives in .github/tommy.yml — edit that file, not this workflow.
 
 name: Tommy
 
@@ -15,6 +15,8 @@ on:
 
 jobs:
   tommy:
+    # NOTE: trigger phrase is duplicated here because `if:` runs before steps.
+    # Keep it in sync with bot.trigger_phrase in .github/tommy.yml.
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, 'tommy')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, 'tommy')) ||
@@ -27,14 +29,30 @@ jobs:
       issues: write
       id-token: write
       actions: read
-    env:
-      POLLINATIONS_TOKEN: ${{ secrets.PLN_GITHUB_TOMMY_KEY }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+          sparse-checkout-cone-mode: false
+
+      - name: Load Config
+        id: cfg
+        run: |
+          # Read values from .github/tommy.yml (yq is pre-installed on ubuntu-latest)
+          echo "trigger=$(yq '.bot.trigger_phrase' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "system_prompt=$(yq -r '.bot.system_prompt' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "whitelist=$(yq -r '.github.whitelist | join(",")'  .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "secret_app_id=$(yq -r '.github.secrets.app_id' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "secret_private_key=$(yq -r '.github.secrets.private_key' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "secret_ai_token=$(yq -r '.github.secrets.ai_token' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "anthropic_api_key=$(yq -r '.ai.router.anthropic_api_key' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+          echo "bot_name=$(yq -r '.bot.name' .github/tommy.yml)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/create-github-app-token@v1
         id: token
         with:
-          app-id: ${{ secrets.TOMMY_BOT_APP_ID }}
-          private-key: ${{ secrets.TOMMY_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets[steps.cfg.outputs.secret_app_id] }}
+          private-key: ${{ secrets[steps.cfg.outputs.secret_private_key] }}
 
       - name: Check Whitelist
         id: whitelist
@@ -42,7 +60,7 @@ jobs:
         with:
           github-token: ${{ steps.token.outputs.token }}
           script: |
-            // Strict case check: ensure lowercase 'tommy' exists
+            const trigger = '${{ steps.cfg.outputs.trigger }}';
             let body = '';
             if (context.eventName === 'issue_comment' || context.eventName === 'pull_request_review_comment') {
               body = context.payload.comment?.body || '';
@@ -52,20 +70,21 @@ jobs:
               body = context.payload.review?.body || '';
             }
 
-            if (!body.includes('tommy')) {
-              console.log('Strict check failed: "tommy" must be lowercase.');
+            if (!body.includes(trigger)) {
+              console.log(`Strict check failed: "${trigger}" must appear in the body.`);
               core.setOutput('authorized', 'false');
-              return; 
+              return;
             }
 
-            const whitelist = ['voodoohop', 'ElliotEtag', 'eulervoid', 'Circuit-Overtime', 'Itachi-1824'];
+            const whitelist = '${{ steps.cfg.outputs.whitelist }}'.split(',').map(s => s.trim());
             const actor = context.actor;
             if (!whitelist.includes(actor)) {
+              const botName = '${{ steps.cfg.outputs.bot_name }}';
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue?.number || context.payload.pull_request?.number,
-                body: `Sorry @${actor}, only whitelisted users can use Tommy.`
+                body: `Sorry @${actor}, only whitelisted users can use ${botName}.`
               });
               core.setOutput('authorized', 'false');
             } else {
@@ -78,7 +97,7 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup
+      - name: Setup Router
         if: steps.whitelist.outputs.authorized == 'true'
         id: setup
         run: |
@@ -93,17 +112,26 @@ jobs:
             gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/reactions -f content=eyes || true
           fi
 
-          # Get bot user ID and setup router config
+          # Get bot user ID
           BOT_USER_ID=$(gh api "/users/${{ steps.token.outputs.app-slug }}[bot]" --jq .id)
           echo "user-id=$BOT_USER_ID" >> "$GITHUB_OUTPUT"
-          mkdir -p $HOME/.claude-code-router
-          echo '{"LOG":false,"NON_INTERACTIVE_MODE":true,"API_TIMEOUT_MS":600000,"Providers":[{"name":"pollinations","api_base_url":"https://gen.pollinations.ai/v1/chat/completions","api_key":"'"${POLLINATIONS_TOKEN}"'","models":["claude-large","perplexity-reasoning"]}],"Router":{"default":"pollinations,glm","webSearch":"pollinations,perplexity-reasoning"}}' > $HOME/.claude-code-router/config.json
 
-          # Start router with Bun
+          # Build router config from tommy.yml
+          pip install pyyaml -q
+          mkdir -p $HOME/.claude-code-router
+          python3 -c "
+          import sys; sys.path.insert(0, '.github/scripts')
+          from ci_config import router_config_json
+          import os
+          print(router_config_json(os.environ['POLLINATIONS_TOKEN']))
+          " > $HOME/.claude-code-router/config.json
+
+          # Start router
           bunx @musistudio/claude-code-router start &
           until curl -s http://localhost:3456 >/dev/null; do sleep 0.5; done
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          POLLINATIONS_TOKEN: ${{ secrets[steps.cfg.outputs.secret_ai_token] }}
 
       - uses: actions/checkout@v4
         if: steps.whitelist.outputs.authorized == 'true'
@@ -112,7 +140,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || (github.event.issue.pull_request && format('refs/pull/{0}/head', github.event.issue.number)) || github.sha }}
           repository: ${{ github.repository }}
           token: ${{ steps.token.outputs.token }}
-
 
       - uses: anthropics/claude-code-action@v1
         if: steps.whitelist.outputs.authorized == 'true'
@@ -123,11 +150,11 @@ jobs:
           GIT_COMMITTER_NAME: "${{ steps.token.outputs.app-slug }}[bot]"
           GIT_COMMITTER_EMAIL: "${{ steps.setup.outputs.user-id }}+${{ steps.token.outputs.app-slug }}[bot]@users.noreply.github.com"
         with:
-          anthropic_api_key: "ccr-pollinations"
+          anthropic_api_key: ${{ steps.cfg.outputs.anthropic_api_key }}
           show_full_output: true
           github_token: ${{ steps.token.outputs.token }}
-          trigger_phrase: "tommy"
+          trigger_phrase: ${{ steps.cfg.outputs.trigger }}
           claude_args: |
-            --system-prompt "You are Tommy, a helpful developer on the team. Never mention Claude, Claude Code, AI, or LLMs — you are just a team member. Be casual, concise, and human. Use bullet points. No verbose explanations. When commenting on issues or reviewing PRs, write like a friendly dev — short, direct, helpful."
+            --system-prompt "${{ steps.cfg.outputs.system_prompt }}"
           additional_permissions: |
             actions: read
