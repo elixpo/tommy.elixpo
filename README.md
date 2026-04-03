@@ -183,22 +183,12 @@ Admins are defined by Discord role IDs and GitHub usernames in `config.json`.
 
 ---
 
-## Built With
-
-- [discord.py](https://discordpy.readthedocs.io/) — Discord bot framework
-- [FastAPI](https://fastapi.tiangolo.com/) — HTTP API
-- [ChromaDB](https://www.trychroma.com/) — vector database for embeddings
-- [Docker](https://www.docker.com/) — sandboxed code execution
-
----
-
-<p align="center">
+<div align="center">
   <sub>Tommy is open source and self-hosted. Your code, your server, your rules.
   </sub>
 
-  <br>
 
   <sub>Built with ❤️ by <a href="https://github.com/elixpo">Elixpo</a>
   </sub>
 
-</p>
+</div>
