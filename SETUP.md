@@ -1,0 +1,198 @@
+# Setting Up Tommy
+
+Tommy is a self-hosted Discord bot that connects your Discord server to a GitHub repository. It lets team members manage issues, review PRs, search code, and run project management — all from Discord.
+
+This guide walks you through setup from scratch. No prior experience with bots required.
+
+---
+
+## What You Need Before Starting
+
+- A computer or server that stays on (Tommy runs 24/7)
+- Python 3.10 or newer installed
+- A Discord account with permission to add bots to your server
+- A GitHub account with access to the repo you want to connect
+
+---
+
+## Step 1 — Get the Code
+
+```bash
+git clone https://github.com/your-org/tommy.git
+cd tommy
+python -m venv venv
+source venv/bin/activate    # on Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+---
+
+## Step 2 — Create a Discord Bot
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **"New Application"** and give it a name (e.g. "Tommy")
+3. Go to the **Bot** tab on the left
+4. Click **"Reset Token"** and copy the token — you'll need it soon
+5. Scroll down to **"Privileged Gateway Intents"** and turn ON:
+   - **Message Content Intent**
+   - **Server Members Intent**
+6. Go to the **OAuth2** tab → **URL Generator**
+   - Under "Scopes", check `bot` and `applications.commands`
+   - Under "Bot Permissions", check: `Send Messages`, `Read Messages/View Channels`, `Create Public Threads`, `Embed Links`, `Attach Files`, `Read Message History`, `Add Reactions`
+7. Copy the generated URL, open it in your browser, and add the bot to your server
+
+---
+
+## Step 3 — Create a GitHub App
+
+A GitHub App lets Tommy interact with your repo securely.
+
+1. Go to [GitHub Settings → Developer Settings → GitHub Apps](https://github.com/settings/apps)
+2. Click **"New GitHub App"**
+3. Fill in:
+   - **Name**: anything (e.g. "tommy-bot")
+   - **Homepage URL**: your repo URL
+   - **Webhook**: uncheck "Active" (Tommy handles its own webhooks)
+4. Under **Permissions → Repository**, set:
+   - Contents: **Read & Write**
+   - Issues: **Read & Write**
+   - Pull Requests: **Read & Write**
+   - Metadata: **Read**
+5. Click **"Create GitHub App"**
+6. On the next page, note the **App ID** number at the top
+7. Scroll down and click **"Generate a private key"** — save the `.pem` file into your tommy folder as `tommy.pem`
+8. Click **"Install App"** in the left sidebar → select your repo → **Install**
+9. After installing, look at the URL — it will be like `https://github.com/settings/installations/12345`. The number at the end is your **Installation ID**.
+
+---
+
+## Step 4 — Set Up Your Environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` in a text editor and fill in:
+
+```
+DISCORD_TOKEN=paste-your-discord-bot-token
+GITHUB_APP_ID=your-app-id-number
+GITHUB_PRIVATE_KEY=./tommy.pem
+GITHUB_INSTALLATION_ID=your-installation-id
+POLLINATIONS_TOKEN=                          # leave blank for free Pollinations AI
+```
+
+The `.env.example` file has detailed comments explaining how to get each key.
+
+---
+
+## Step 5 — Configure the Bot
+
+Open `config.json` and update these fields:
+
+```jsonc
+{
+  "bot": {
+    "name": "Tommy",                         // your bot's display name
+    "default_repo": "your-org/your-repo"     // the repo Tommy will work with
+  },
+  "github": {
+    "admin_users": ["your-github-username"],  // who can use admin commands
+    "whitelisted_repos": ["your-org/your-repo"]
+  },
+  "discord": {
+    "admin_role_ids": []                      // Discord role IDs that count as admin
+                                              // (right-click a role → Copy ID)
+  }
+}
+```
+
+Everything else has sensible defaults. See the comments in `config.json` for all options.
+
+---
+
+## Step 6 — Add Your Project Knowledge (Optional)
+
+Open `src/context/repo_info.txt` and write a short description of your project. This is background knowledge the bot uses in every conversation — think of it as a cheat sheet you'd give a new team member. Things like:
+
+- What your project does
+- Key API endpoints or services
+- Important links (docs, dashboards)
+- Terminology or concepts unique to your project
+
+---
+
+## Step 7 — Run the Bot
+
+```bash
+python main.py
+```
+
+You should see:
+
+```
+Starting Tommy Bot...
+Bot: Tommy
+Default repo: your-org/your-repo
+GitHub auth: App
+```
+
+Mention the bot in Discord (`@Tommy help`) to verify it's working.
+
+---
+
+## Step 8 — Set Up CI Pipelines (Optional)
+
+Tommy comes with GitHub Actions workflows that respond to mentions in issues/PRs, auto-assign PR authors, and manage project boards.
+
+### Add GitHub Secrets
+
+Go to your repo → **Settings → Secrets and Variables → Actions** and add:
+
+| Secret Name | Value |
+|---|---|
+| `TOMMY_BOT_APP_ID` | Your GitHub App ID (same as `.env`) |
+| `TOMMY_BOT_PRIVATE_KEY` | Contents of your `.pem` file (paste the full text) |
+| `PLN_GITHUB_TOMMY_KEY` | Your AI provider token (same as `POLLINATIONS_TOKEN`) |
+
+> The secret names are configurable in `.github/tommy.yml` → `github.secrets`.
+
+### Configure the CI
+
+Open `.github/tommy.yml` and review the settings. The key ones:
+
+- `bot.trigger_phrase` — the word that activates the bot in GitHub issues/PRs (default: `tommy`)
+- `github.secrets` — must match the secret names you just added
+- `ai.models` — which AI models the CI workflows use
+
+The workflows will now respond when someone writes "tommy" in an issue or PR comment.
+
+---
+
+## Running in the Background
+
+For production, use a process manager so the bot stays running:
+
+```bash
+# Using systemd (Linux)
+# Create /etc/systemd/system/tommy.service, then:
+sudo systemctl enable tommy
+sudo systemctl start tommy
+
+# Or simply using screen/tmux:
+screen -S tommy
+python main.py
+# Ctrl+A, D to detach
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "Invalid Discord token" | Double-check `DISCORD_TOKEN` in `.env`. Reset the token in the Discord Developer Portal if needed. |
+| "Privileged Intents Required" | Enable Message Content Intent in Discord Developer Portal → Bot tab. |
+| Bot doesn't respond | Make sure the bot has permission to read/send messages in the channel. Check that it's actually online in the server member list. |
+| GitHub commands fail | Verify your GitHub App is installed on the correct repo and has the right permissions. |
+| Embeddings fail | Check `EMBEDDINGS_API_KEY` in `.env` if using `"provider": "api"`. For local models, make sure the model downloads successfully. |
