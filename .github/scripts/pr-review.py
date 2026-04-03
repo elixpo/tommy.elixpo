@@ -14,24 +14,26 @@ import requests
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
-# Configuration
-GITHUB_API_BASE = "https://api.github.com"
-POLLINATIONS_API_BASE = "https://gen.pollinations.ai/v1/chat/completions"
-MODEL = "claude-large"
+from ci_config import ai_api_base, ai_model, pr_review_cfg, bot_name
 
-# Token limits for gemini-large (1M context window!)
-MAX_INPUT_TOKENS = 900000  # Leave buffer from 1M limit
-MAX_OUTPUT_TOKENS = 65000  # Max output tokens
+# Configuration — read from .github/tommy.yml
+GITHUB_API_BASE = "https://api.github.com"
+POLLINATIONS_API_BASE = ai_api_base()
+MODEL = ai_model("review")
+
+_pr_cfg = pr_review_cfg()
+MAX_INPUT_TOKENS = _pr_cfg.get("max_input_tokens", 900000)
+MAX_OUTPUT_TOKENS = _pr_cfg.get("max_output_tokens", 65000)
 CHARS_PER_TOKEN = 4  # Rough estimate
 
 # AUTO_REVIEW: If True, automatically reviews when PR is opened
-AUTO_REVIEW = False
+AUTO_REVIEW = _pr_cfg.get("auto_review", False)
 
 # REVIEW_ON_SYNC: If True, reviews on every push/sync (new commits)
-REVIEW_ON_SYNC = False
+REVIEW_ON_SYNC = _pr_cfg.get("review_on_sync", False)
 
 # The trigger phrase to force a review (case-insensitive)
-REVIEW_TRIGGER = "Review=True"
+REVIEW_TRIGGER = _pr_cfg.get("review_trigger", "Review=True")
 
 # Files to skip during review (pre-compiled for performance and safety)
 SKIP_FILE_PATTERNS = [
@@ -68,7 +70,7 @@ HIGH_PRIORITY_PATTERNS = ['auth', 'login', 'password', 'secret', 'token', 'api',
 # Code file extensions
 CODE_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.go', '.rs', '.java', '.cpp', '.c', '.h', '.hpp', '.rb', '.php', '.swift', '.kt', '.scala', '.cs', '.vue', '.svelte'}
 
-BOT_NAME = "pollinations-ai"  # GitHub bot app name - mention as @pollinations-ai
+BOT_NAME = bot_name()  # GitHub bot app name — read from .github/tommy.yml
 
 
 @dataclass
