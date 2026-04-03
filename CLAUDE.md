@@ -19,6 +19,15 @@ Tommy is a Discord-to-GitHub orchestrator bot. It enables users to interact with
 - API model name is `tommy`
 - The bot is designed to be general-purpose and open source
 
+## Embeddings
+
+Tommy uses a unified embedding provider configured in `config.json` under `"embeddings"`. Two modes:
+
+- **`"provider": "api"`** — Uses any OpenAI-compatible embedding API. Set `model`, `api_base_url` in config.json, and `EMBEDDINGS_API_KEY` in `.env`.
+- **`"provider": "local"`** — Runs a sentence_transformers model on the host machine. Set `model` to a HuggingFace model ID or local filesystem path (no API key needed).
+
+All three embedding subsystems (code, docs, session) share the same provider via `src/services/embeddings_utils.py`.
+
 ## Development
 
 - Python 3.10+

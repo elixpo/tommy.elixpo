@@ -14,21 +14,9 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
 
+from ..embeddings_utils import get_provider
+
 logger = logging.getLogger(__name__)
-
-_model = None
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-
-        logger.info("Loading embedding model for session...")
-        _model = SentenceTransformer(
-            "jinaai/jina-embeddings-v2-base-code", trust_remote_code=True
-        )
-    return _model
 
 
 def _chunk_code(content: str, file_path: str, max_lines: int = 100) -> list[dict]:
@@ -115,7 +103,7 @@ class SessionEmbeddings:
 
     async def initialize(self):
         if not self._initialized:
-            await asyncio.to_thread(_get_model)
+            get_provider()  # ensure provider is loaded
             self._initialized = True
             logger.info(f"Session embeddings initialized for sandbox {self.sandbox_id}")
 
@@ -123,7 +111,7 @@ class SessionEmbeddings:
         if not content.strip():
             return 0
 
-        model = _get_model()
+        provider = get_provider()
 
         old_chunk_ids = [
             chunk_id
@@ -135,12 +123,19 @@ class SessionEmbeddings:
 
         chunks = _chunk_code(content, file_path)
 
-        indexed_count = 0
-        for chunk in chunks:
-            chunk_id = f"{file_path}:{chunk['start_line']}-{chunk['end_line']}"
-            content_hash = hashlib.md5(chunk["content"].encode()).hexdigest()
+        # Batch-embed all chunks at once
+        chunk_texts = [c["content"] for c in chunks if c["content"].strip()]
+        if not chunk_texts:
+            return 0
+        embeddings = await provider.embed(chunk_texts)
 
-            embedding = await asyncio.to_thread(model.encode, chunk["content"])
+        indexed_count = 0
+        emb_idx = 0
+        for chunk in chunks:
+            if not chunk["content"].strip():
+                continue
+            chunk_id = f"{file_path}:{chunk['start_line']}-{chunk['end_line']}"
+            chunk_hash = hashlib.md5(chunk["content"].encode()).hexdigest()
 
             self.chunks[chunk_id] = EmbeddedChunk(
                 id=chunk_id,
@@ -148,9 +143,10 @@ class SessionEmbeddings:
                 start_line=chunk["start_line"],
                 end_line=chunk["end_line"],
                 content=chunk["content"],
-                embedding=embedding.tolist(),
-                content_hash=content_hash,
+                embedding=embeddings[emb_idx],
+                content_hash=chunk_hash,
             )
+            emb_idx += 1
             indexed_count += 1
 
         self.files_indexed.add(file_path)
@@ -176,9 +172,8 @@ class SessionEmbeddings:
         if not self.chunks:
             return []
 
-        model = _get_model()
-
-        query_embedding = await asyncio.to_thread(model.encode, query)
+        provider = get_provider()
+        query_embedding = await provider.embed_query(query)
 
         import numpy as np
 

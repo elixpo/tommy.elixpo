@@ -155,7 +155,7 @@ GITHUB_PRIVATE_KEY=./tommy.pem  # file path or inline key
 GITHUB_INSTALLATION_ID=your_installation_id
 
 # Optional
-OPENAI_EMBEDDINGS_API=your_openai_key  # for code/doc embeddings
+EMBEDDINGS_API_KEY=your_key  # only if embeddings.provider is "api" in config.json
 POLLINATIONS_TOKEN=your_pollinations_token
 ```
 
