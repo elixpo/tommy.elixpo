@@ -1,276 +1,184 @@
+<p align="center">
+  <img src=".github/assets/tommy-logo.png" alt="Tommy" width="180" height="180">
+</p>
+
 <h1 align="center">Tommy</h1>
 
 <p align="center">
-  <strong>Bidirectional GitHub ↔ Discord Assistant</strong>
+  <strong>Your GitHub repo, managed from Discord.</strong><br>
+  <sub>Issues, PRs, code reviews, project boards — one bot, zero tab-switching.</sub>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#setup">Setup</a> •
-  <a href="#tools">Tools</a> •
-  <a href="#architecture">Architecture</a>
+  <a href="#-what-tommy-does">What it Does</a>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#%EF%B8%8F-ci-pipelines">CI Pipelines</a>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#-configuration">Configuration</a>&nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="SETUP.md">Full Setup Guide</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/discord.py-2.0+-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord.py">
-  <img src="https://img.shields.io/badge/GitHub%20API-GraphQL%20%2B%20REST-181717?style=flat-square&logo=github&logoColor=white" alt="GitHub API">
-  <img src="https://img.shields.io/badge/AI-Pollinations-green?style=flat-square" alt="Pollinations AI">
+  <img src="https://img.shields.io/badge/python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/discord.py-2.6+-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord.py">
+  <img src="https://img.shields.io/badge/self--hosted-your%20server-FF6B6B?style=for-the-badge" alt="Self-hosted">
+  <img src="https://img.shields.io/badge/license-open%20source-4CAF50?style=for-the-badge" alt="Open Source">
 </p>
 
 ---
 
-## ✨ Features
+## What Tommy Does
 
-### 🔄 Bidirectional Communication
-| Platform | Trigger | Response |
-|----------|---------|----------|
-| **Discord** | @mention Tommy | Replies in thread |
-| **GitHub** | @mention in issues/PRs/comments | Replies on GitHub |
-
-### 🎯 Full GitHub Integration
+Tommy sits in your Discord server and connects directly to your GitHub repo. Your team can manage the entire development workflow without leaving Discord.
 
 <table>
 <tr>
-<td width="50%">
+<td width="50%" valign="top">
 
-**📋 Issues**
-- Search, create, comment
-- Close, reopen, edit (admin)
-- Labels, assignees, milestones
-- Sub-issues & linking
-- Subscriptions & notifications
+### From Discord
 
-</td>
-<td width="50%">
-
-**🔀 Pull Requests**
-- List, review, approve, merge
-- Inline comments & suggestions
-- Request reviewers
-- AI-powered code review
-- Auto-merge support
+- **Search issues & PRs** — find anything instantly
+- **Create & edit issues** — with labels, assignees, milestones
+- **Review PRs** — approve, comment, request changes
+- **Search your codebase** — semantic search powered by embeddings
+- **Ask questions** — Tommy knows your repo inside-out
+- **Run code tasks** — autonomous coding in a sandboxed environment
 
 </td>
-</tr>
-<tr>
-<td>
+<td width="50%" valign="top">
 
-**📊 Projects V2**
-- View project boards
-- Add/remove items
-- Update status & fields
-- Track progress
+### From GitHub
 
-</td>
-<td>
-
-**🤖 Code Agent**
-- Autonomous coding tasks
-- Create branches & PRs
-- Edit files directly
-- Run tests & fix issues
+- **Mention Tommy in issues/PRs** — get AI-powered responses
+- **Auto-assign PR authors** — no manual busywork
+- **AI code reviews** — catches bugs before humans do
+- **Project management** — auto-categorize and label new issues
+- **PR summaries** — generates changelogs with images, posts to Discord
 
 </td>
 </tr>
 </table>
 
-### 🔍 Smart Search
-- **`code_search`** - Semantic search across codebase (OpenAI embeddings + ChromaDB)
-- **`doc_search`** - Semantic search across documentation (OpenAPI schema, etc.)
-- **`web_search`** - Real-time web search via Pollinations API
-
-### 🧠 AI-Powered
-- Native tool calling (Kimi k2.5 / GLM-5 / Gemini 3 Pro)
-- Parallel tool execution
-- Context-aware responses
-- Multi-language support
-
 ---
 
-## 🚀 How It Works
+## See It in Action
 
-### Discord → GitHub
 ```
-User: @Tommy find 502 errors
+You:    @Tommy what's the status of the auth refactor?
 
-   [Thread Created: "Issue: 502 errors"]
-
-Tommy: Found 3 open issues:
-       • #156 - 502 errors on Flux model
-       • #142 - Intermittent 502 on image gen
-       • #98 - API returning 502 under load
-
-User: review PR #200
-
-Tommy: 🔍 Reviewing PR #200...
-
-       ✅ Overall: LGTM with minor suggestions
-
-       📝 src/api.py:42 - Consider adding error handling
-       📝 src/utils.py:15 - This could be simplified
+Tommy:  Found 2 related issues:
+        - #89 — Auth middleware rewrite (in progress, assigned to @alice)
+        - #92 — Session token migration (blocked on #89)
+        And 1 open PR:
+        - #95 — feat: new JWT middleware (3 files changed, 2 approvals)
 ```
 
-### GitHub → Discord
-```markdown
-<!-- In a GitHub issue comment -->
-@pollinations-ci can you explain what this error means?
+```
+You:    @Tommy create an issue: login page crashes on Safari
 
-<!-- Tommy replies directly on GitHub -->
-This error occurs when... [detailed explanation]
+Tommy:  Created #103 — "Login page crashes on Safari"
+        Labels: bug
+        Assigned to: @you
+```
+
+```
+You:    @Tommy review PR #95
+
+Tommy:  Reviewed PR #95 — feat: new JWT middleware
+
+        src/auth.py:42 — Token expiry should use UTC, not local time
+        src/auth.py:78 — Missing error handling for malformed tokens
+        tests/test_auth.py — Looks good, covers the main paths
 ```
 
 ---
 
-## 📦 Setup
-
-### Prerequisites
-- Python 3.10+
-- Discord Bot Token
-- GitHub App (recommended) or PAT
-
-### 1️⃣ Clone & Install
+## Quick Start
 
 ```bash
-cd apps/tommy
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+git clone https://github.com/your-org/tommy.git
+cd tommy
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env          # fill in your tokens
+python main.py                # that's it
 ```
 
-### 2️⃣ Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your credentials:
-
-```env
-# Required
-DISCORD_TOKEN=your_discord_bot_token
-GITHUB_APP_ID=your_app_id
-GITHUB_PRIVATE_KEY=./tommy.pem  # file path or inline key
-GITHUB_INSTALLATION_ID=your_installation_id
-
-# Optional
-EMBEDDINGS_API_KEY=your_key  # only if embeddings.provider is "api" in config.json
-POLLINATIONS_TOKEN=your_pollinations_token
-```
-
-### 3️⃣ Run
-
-```bash
-python main.py
-```
+You'll need a **Discord bot token** and a **GitHub App**. The [full setup guide](SETUP.md) walks you through every step — no experience required.
 
 ---
 
-## 🛠️ Tools
-
-| Tool | Description | Access |
-|------|-------------|--------|
-| `github_overview` | Quick repo summary (issues, labels, milestones, projects) | Everyone |
-| `github_issue` | All issue operations | Read: Everyone, Write: Admin |
-| `github_pr` | All PR operations | Read: Everyone, Write: Admin |
-| `github_project` | Project board operations | Read: Everyone, Write: Admin |
-| `github_code` | Code agent (branches, edits, PRs) | Admin only |
-| `code_search` | Semantic code search | Everyone |
-| `doc_search` | Semantic doc search (OpenAPI schema) | Everyone |
-| `web_search` | Real-time web search | Everyone |
-| `discord_search` | Search Discord messages, members, channels | Everyone |
-
----
-
-## 🏗️ Architecture
+## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         ENTRY POINTS                            │
-├────────────────────────────┬────────────────────────────────────┤
-│     Discord (@mention)     │     GitHub Webhook (port 8002)     │
-│     └─ Thread-based        │     └─ Issues, PRs, Comments       │
-└────────────────────────────┴────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    POLLINATIONS AI ENGINE                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │  Kimi k2.5  │  │    GLM-5    │  │    Gemini 3 Pro         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-│                    Native Tool Calling                          │
-└─────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-            ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-            │   GitHub    │ │    Code     │ │  Embeddings │
-            │    APIs     │ │   Agent     │ │  (OpenAI)   │
-            │ GraphQL+REST│ │  Sandbox    │ │  ChromaDB   │
-            └─────────────┘ └─────────────┘ └─────────────┘
+ Discord                    Tommy                     GitHub
+────────                  ─────────                  ────────
+@mention ──────────────►  AI Engine  ──────────────► REST / GraphQL API
+  reply  ◄──────────────  + Tools    ◄──────────────  Webhooks
+                             │
+                    ┌────────┼────────┐
+                    ▼        ▼        ▼
+                Embeddings  Code    Web
+                (ChromaDB)  Agent   Search
+                            (Docker)
 ```
 
----
-
-## 📁 Project Structure
-
-```
-Tommy/
-├── 📄 main.py                    # Entry point
-├── 📄 requirements.txt           # Dependencies
-├── 📄 .env.example               # Environment template
-├── 📁 src/
-│   ├── 📄 bot.py                 # Discord bot + webhook server
-│   ├── 📄 config.py              # Configuration
-│   ├── 📄 constants.py           # Tools, prompts, schemas
-│   ├── 📁 context/               # Session management + repo_info.txt
-│   ├── 📁 api/                   # OpenAI-compatible REST API
-│   └── 📁 services/
-│       ├── 📄 github.py          # GitHub REST API
-│       ├── 📄 github_graphql.py  # GitHub GraphQL API
-│       ├── 📄 github_pr.py       # PR operations
-│       ├── 📄 pollinations.py    # AI client
-│       ├── 📄 embeddings.py      # Code embeddings (OpenAI + ChromaDB)
-│       ├── 📄 doc_embeddings.py  # Doc embeddings (crawl + embed)
-│       ├── 📄 discord_search.py  # Discord guild search
-│       ├── 📄 web_scraper.py     # Crawl4AI web scraper
-│       └── 📄 webhook_server.py  # GitHub webhooks
-└── 📁 .github/workflows/
-    └── 📄 deploy.yml             # Auto-deploy on push
-```
+- **AI Engine** — configurable (Pollinations, OpenAI, or any OpenAI-compatible API)
+- **Embeddings** — your entire codebase indexed for semantic search (local or API)
+- **Code Agent** — runs code in a Docker sandbox, creates branches and PRs
+- **Everything is configurable** — models, endpoints, and behavior in two config files
 
 ---
 
-## ⚡ Performance
+## CI Pipelines
 
-| Optimization | Benefit |
-|--------------|---------|
-| GraphQL batching | 40-90% fewer API calls |
-| Parallel tool execution | Multiple ops simultaneously |
-| Connection pooling | Reused HTTP connections |
-| Local embeddings | Instant code search |
-| Stateless design | No database overhead |
+Tommy ships with GitHub Actions that work on your repo automatically:
 
----
+| Workflow | What it does |
+|----------|-------------|
+| **PR Assistant** | Mention `tommy` in any issue or PR comment to get AI help |
+| **Code Review** | AI reviews PRs for bugs, security issues, and style |
+| **PR Author Assign** | Automatically assigns the PR author when opened |
+| **Project Manager** | Categorizes new issues/PRs and adds labels |
 
-## 🔐 Permissions
-
-| Role | Capabilities |
-|------|--------------|
-| **Everyone** | Search, read issues/PRs, code search, web search |
-| **Admin** | + Close, edit, label, assign, merge, code agent |
-
-Admin = Users with configured Discord role(s)
+All CI config lives in a single file: `.github/tommy.yml`. No hardcoded values in workflows.
 
 ---
 
-## 🤝 Contributing
+## Configuration
 
-This is a private bot for Pollinations.AI. For issues or suggestions, reach out on Discord!
+Tommy uses **two config files** — one for the bot, one for CI:
+
+| File | What it controls |
+|------|-----------------|
+| `config.json` | Bot name, your repo, admin users, AI model, embeddings, feature flags |
+| `.github/tommy.yml` | CI trigger phrase, AI endpoints for pipelines, PR review settings, image generation |
+
+Secrets (tokens, keys) go in `.env` — never committed to git.
+
+> **Forking for your org?** Edit `config.json` and `.github/tommy.yml`, set your GitHub secrets, and you're done. See the [setup guide](SETUP.md) for details.
+
+---
+
+## Permissions
+
+| Who | What they can do |
+|-----|-----------------|
+| **Everyone** | Search issues, PRs, code, docs, web. Read project boards. Ask questions. |
+| **Admins** | All of the above + create/edit/close issues, merge PRs, run code agent, manage labels. |
+
+Admins are defined by Discord role IDs and GitHub usernames in `config.json`.
+
+---
+
+## Built With
+
+- [discord.py](https://discordpy.readthedocs.io/) — Discord bot framework
+- [FastAPI](https://fastapi.tiangolo.com/) — HTTP API
+- [ChromaDB](https://www.trychroma.com/) — vector database for embeddings
+- [Docker](https://www.docker.com/) — sandboxed code execution
 
 ---
 
 <p align="center">
-  Made with 💜 for <a href="https://pollinations.ai">Pollinations.AI</a>
+  <sub>Tommy is open source and self-hosted. Your code, your server, your rules.</sub>
 </p>
