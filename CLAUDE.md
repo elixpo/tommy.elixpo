@@ -52,6 +52,7 @@ Configured via `.github/tommy.yml`. Workflows read it at runtime via `yq`/`jq`.
 
 - `pr-issue-assist.yml` — AI assistant triggered by mentioning the bot in issues/PRs
 - `pr-review.yml` — AI code review on PRs
+- `autofix.yml` — When an issue gets the configured label (default: `tommy`), AI reads the codebase, fixes the bug, and opens a PR. Config in `tommy.yml` → `autofix`.
 - `pr-assign-author.yml` — Auto-assigns PR author
 - `project-manager.yml` — AI-powered issue/PR triage and labeling
 

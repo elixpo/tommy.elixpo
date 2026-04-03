@@ -93,6 +93,18 @@ discord:
   char_limit: 2000
   chunk_size: 1900
 
+# ── Autofix ──────────────────────────────────────────────────────────
+autofix:
+  enabled: true
+  label: "tommy"                        # issues with this label get auto-fixed
+  system_prompt: >-
+    You are Tommy, an autonomous developer. You have been assigned a GitHub issue
+    to fix. You have full access to the codebase via checkout.
+    Read the issue carefully, understand the problem, find the relevant code,
+    implement the fix, and commit it. Create a pull request when done.
+    Be surgical — change only what's needed. Run tests if they exist.
+    Write a clear PR description explaining what you changed and why.
+
 # ── Project Manager ─────────────────────────────────────────────────
 project_manager:
   # GitHub Project (V2) number — set to your project board number

@@ -150,6 +150,7 @@ Tommy ships with GitHub Actions that work on your repo automatically:
 |----------|-------------|
 | **PR Assistant** | Mention `tommy` in any issue or PR comment to get AI help |
 | **Code Review** | AI reviews PRs for bugs, security issues, and style |
+| **Autofix** | Label an issue with `tommy` and the AI reads the codebase, fixes the bug, and opens a PR |
 | **PR Author Assign** | Automatically assigns the PR author when opened |
 | **Project Manager** | Categorizes new issues/PRs and adds labels |
 

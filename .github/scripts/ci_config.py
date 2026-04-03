@@ -185,3 +185,12 @@ def project_number() -> int:
 
 def pr_review_cfg() -> Dict:
     return _deep_get(cfg, "pr_review", default={})
+
+def autofix_enabled() -> bool:
+    return _deep_get(cfg, "autofix", "enabled", default=True)
+
+def autofix_label() -> str:
+    return _deep_get(cfg, "autofix", "label", default="tommy")
+
+def autofix_system_prompt() -> str:
+    return _deep_get(cfg, "autofix", "system_prompt", default="")
