@@ -614,9 +614,6 @@ def commit_gist(gist: Dict, github_token: str, owner: str, repo: str) -> bool:
 
     print(f"  Failed to commit gist: {resp.status_code} {resp.text[:200]}")
     return False
-
-
-def read_gists_for_date(date_str: str, repo_root: str = None) -> List[Dict]:
     """Read all gist JSON files for a given date from the local repo.
 
     Args:
