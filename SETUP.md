@@ -18,7 +18,7 @@ This guide walks you through setup from scratch. No prior experience with bots r
 ## Step 1 — Clone Tommy
 
 ```bash
-git clone https://github.com/your-org/tommy.git
+git clone https://github.com/elixpo/tommy.git
 cd tommy
 python -m venv venv
 source venv/bin/activate    # on Windows: venv\Scripts\activate
