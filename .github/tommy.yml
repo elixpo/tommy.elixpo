@@ -58,7 +58,7 @@ ai:
           - "claude-fast"
           - "perplexity-fast"
     default_route: "pollinations,glm"
-    websearch_route: "pollinations,perplexity-fast
+    websearch_route: "pollinations,perplexity-fast"
     anthropic_api_key: "ccr-pollinations"   # passed to claude-code-action
 
 # ── PR Review ───────────────────────────────────────────────────────
